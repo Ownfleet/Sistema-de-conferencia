@@ -6,8 +6,6 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN a2enmod rewrite
-
 WORKDIR /var/www/html
 
 COPY . /var/www/html/
