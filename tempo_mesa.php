@@ -16,29 +16,32 @@ if ($action === "") {
 
 try {
     if ($action === "start") {
-        $mesa = isset($_POST["mesa"]) ? (int)$_POST["mesa"] : 0;
+        $mesaNumero = isset($_POST["mesa"]) ? (int)$_POST["mesa"] : 0;
         $driverRef = isset($_POST["driver_ref"]) && $_POST["driver_ref"] !== "" ? (int)$_POST["driver_ref"] : null;
         $driverId = trim((string)($_POST["driver_id"] ?? ""));
         $driverName = trim((string)($_POST["driver_name"] ?? ""));
         $rotaTexto = trim((string)($_POST["rota_texto"] ?? ""));
-        $tipoVeiculo = trim((string)($_POST["vehicle_type"] ?? ""));
+        $vehicleType = trim((string)($_POST["vehicle_type"] ?? ""));
 
-        if ($mesa <= 0) {
-            responder(["ok" => false, "erro" => "Mesa inválida ou não enviada."]);
+        if ($mesaNumero <= 0) {
+            responder(["ok" => false, "erro" => "Mesa inválida ou não enviada."], 400);
         }
 
         if ($rotaTexto === "") {
-            responder(["ok" => false, "erro" => "Rota não informada."]);
+            responder(["ok" => false, "erro" => "Rota não informada."], 400);
         }
 
         $stmtFecha = $pdo->prepare("
             UPDATE mesa_tempos
-            SET finished_at = NOW()
+            SET
+                finished_at = NOW(),
+                duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::int,
+                status = 'finalizado'
             WHERE mesa_numero = :mesa_numero
               AND finished_at IS NULL
         ");
         $stmtFecha->execute([
-            ":mesa_numero" => $mesa
+            ":mesa_numero" => $mesaNumero
         ]);
 
         $stmtInsere = $pdo->prepare("
@@ -47,31 +50,35 @@ try {
                 mesa_numero,
                 driver_ref,
                 driver_id,
-                nome_do_motorista,
+                driver_name,
                 rota_texto,
-                tipo_de_veiculo,
-                started_at
+                vehicle_type,
+                started_at,
+                status,
+                created_at
             )
             VALUES
             (
                 :mesa_numero,
                 :driver_ref,
                 :driver_id,
-                :nome_do_motorista,
+                :driver_name,
                 :rota_texto,
-                :tipo_de_veiculo,
+                :vehicle_type,
+                NOW(),
+                'conferindo',
                 NOW()
             )
             RETURNING started_at
         ");
 
         $stmtInsere->execute([
-            ":mesa_numero" => $mesa,
+            ":mesa_numero" => $mesaNumero,
             ":driver_ref" => $driverRef,
             ":driver_id" => $driverId !== "" ? $driverId : null,
-            ":nome_do_motorista" => $driverName !== "" ? $driverName : null,
+            ":driver_name" => $driverName !== "" ? $driverName : null,
             ":rota_texto" => $rotaTexto,
-            ":tipo_de_veiculo" => $tipoVeiculo !== "" ? $tipoVeiculo : null
+            ":vehicle_type" => $vehicleType !== "" ? $vehicleType : null
         ]);
 
         $row = $stmtInsere->fetch(PDO::FETCH_ASSOC);
@@ -83,15 +90,18 @@ try {
     }
 
     if ($action === "finish") {
-        $mesa = isset($_POST["mesa"]) ? (int)$_POST["mesa"] : 0;
+        $mesaNumero = isset($_POST["mesa"]) ? (int)$_POST["mesa"] : 0;
 
-        if ($mesa <= 0) {
-            responder(["ok" => false, "erro" => "Mesa inválida ou não enviada."]);
+        if ($mesaNumero <= 0) {
+            responder(["ok" => false, "erro" => "Mesa inválida ou não enviada."], 400);
         }
 
         $stmtFim = $pdo->prepare("
             UPDATE mesa_tempos
-            SET finished_at = NOW()
+            SET
+                finished_at = NOW(),
+                duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::int,
+                status = 'finalizado'
             WHERE id = (
                 SELECT id
                 FROM mesa_tempos
@@ -100,11 +110,11 @@ try {
                 ORDER BY started_at DESC
                 LIMIT 1
             )
-            RETURNING started_at, finished_at, rota_texto
+            RETURNING started_at, finished_at, duration_seconds, rota_texto
         ");
 
         $stmtFim->execute([
-            ":mesa_numero" => $mesa
+            ":mesa_numero" => $mesaNumero
         ]);
 
         $row = $stmtFim->fetch(PDO::FETCH_ASSOC);
@@ -113,25 +123,21 @@ try {
             responder([
                 "ok" => false,
                 "erro" => "Nenhum cronômetro ativo encontrado para essa mesa."
-            ]);
+            ], 404);
         }
-
-        $inicio = new DateTime($row["started_at"]);
-        $fim = new DateTime($row["finished_at"]);
-        $duracao = max(0, $fim->getTimestamp() - $inicio->getTimestamp());
 
         responder([
             "ok" => true,
-            "duration_seconds" => $duracao,
+            "duration_seconds" => (int)($row["duration_seconds"] ?? 0),
             "rota_texto" => $row["rota_texto"] ?? ""
         ]);
     }
 
     if ($action === "status") {
-        $mesa = isset($_GET["mesa"]) ? (int)$_GET["mesa"] : 0;
+        $mesaNumero = isset($_GET["mesa"]) ? (int)$_GET["mesa"] : 0;
 
-        if ($mesa <= 0) {
-            responder(["ok" => false, "erro" => "Mesa inválida ou não enviada."]);
+        if ($mesaNumero <= 0) {
+            responder(["ok" => false, "erro" => "Mesa inválida ou não enviada."], 400);
         }
 
         $stmtBusca = $pdo->prepare("
@@ -140,11 +146,14 @@ try {
                 mesa_numero,
                 driver_ref,
                 driver_id,
-                nome_do_motorista,
+                driver_name,
                 rota_texto,
-                tipo_de_veiculo,
+                vehicle_type,
                 started_at,
-                finished_at
+                finished_at,
+                duration_seconds,
+                status,
+                created_at
             FROM mesa_tempos
             WHERE mesa_numero = :mesa_numero
               AND finished_at IS NULL
@@ -153,7 +162,7 @@ try {
         ");
 
         $stmtBusca->execute([
-            ":mesa_numero" => $mesa
+            ":mesa_numero" => $mesaNumero
         ]);
 
         $row = $stmtBusca->fetch(PDO::FETCH_ASSOC);
@@ -173,10 +182,13 @@ try {
                 "mesa_numero" => $row["mesa_numero"],
                 "driver_ref" => $row["driver_ref"],
                 "driver_id" => $row["driver_id"],
-                "nome_do_motorista" => $row["nome_do_motorista"],
+                "driver_name" => $row["driver_name"],
                 "rota_texto" => $row["rota_texto"],
-                "tipo_de_veiculo" => $row["tipo_de_veiculo"],
-                "started_at" => $row["started_at"]
+                "vehicle_type" => $row["vehicle_type"],
+                "started_at" => $row["started_at"],
+                "duration_seconds" => $row["duration_seconds"],
+                "status" => $row["status"],
+                "created_at" => $row["created_at"]
             ]
         ]);
     }
