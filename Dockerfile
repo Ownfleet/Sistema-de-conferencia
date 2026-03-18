@@ -1,4 +1,4 @@
-FROM php:8.2-apache
+FROM php:8.2-cli
 
 RUN apt-get update && apt-get install -y \
     libpq-dev \
@@ -6,15 +6,10 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN echo "=== MODS AVAILABLE ===" \
- && ls -la /etc/apache2/mods-available/ \
- && echo "=== MODS ENABLED ===" \
- && ls -la /etc/apache2/mods-enabled/ \
- && echo "=== MPM FILES ===" \
- && ls -la /etc/apache2/mods-enabled/*mpm* || true
+WORKDIR /app
 
-WORKDIR /var/www/html
-COPY . /var/www/html/
-RUN chown -R www-data:www-data /var/www/html
+COPY . /app
 
-CMD ["/bin/bash", "-lc", "echo '=== APACHE MODULES ==='; apache2ctl -M; echo '=== APACHE CONFIG TEST ==='; apache2ctl configtest; apache2-foreground"]
+EXPOSE 8080
+
+CMD sh -c "php -S 0.0.0.0:${PORT:-8080} -t /app"
