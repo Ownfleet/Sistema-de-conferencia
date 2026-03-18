@@ -1,35 +1,75 @@
 <?php
 require "db.php";
-session_start();
-
 header("Content-Type: application/json; charset=utf-8");
 
-if (!isset($_SESSION["user"])) {
-    http_response_code(401);
-    echo json_encode(["ok" => false, "erro" => "Não autenticado"]);
+function responder($data, $status = 200){
+    http_response_code($status);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$id = $_POST["id"] ?? null;
-$status = $_POST["status"] ?? null;
+try {
+    $id = $_POST["id"] ?? null;
+    $status = trim((string)($_POST["status"] ?? ""));
 
-if (!$id || !$status) {
-    http_response_code(400);
-    echo json_encode(["ok" => false, "erro" => "Dados inválidos"]);
-    exit;
+    if (!$id || $status === "") {
+        responder([
+            "ok" => false,
+            "erro" => "ID ou status não informado."
+        ], 400);
+    }
+
+    $statusPermitidos = ["ativo", "conferindo", "finalizado"];
+
+    if (!in_array($status, $statusPermitidos, true)) {
+        responder([
+            "ok" => false,
+            "erro" => "Status inválido."
+        ], 400);
+    }
+
+    $stmtBusca = $pdo->prepare("
+        SELECT id, driver_id, driver_name, cluster_text, status
+        FROM drivers
+        WHERE id = :id
+        LIMIT 1
+    ");
+    $stmtBusca->execute([":id" => $id]);
+    $driver = $stmtBusca->fetch(PDO::FETCH_ASSOC);
+
+    if (!$driver) {
+        responder([
+            "ok" => false,
+            "erro" => "Motorista não encontrado."
+        ], 404);
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE drivers
+        SET status = :status
+        WHERE id = :id
+    ");
+    $stmt->execute([
+        ":status" => $status,
+        ":id" => $id
+    ]);
+
+    responder([
+        "ok" => true,
+        "mensagem" => "Status atualizado com sucesso.",
+        "driver" => [
+            "id" => $driver["id"],
+            "driver_id" => $driver["driver_id"],
+            "driver_name" => $driver["driver_name"],
+            "cluster_text" => $driver["cluster_text"],
+            "status_anterior" => $driver["status"],
+            "status_atual" => $status
+        ]
+    ]);
+
+} catch (Throwable $e) {
+    responder([
+        "ok" => false,
+        "erro" => $e->getMessage()
+    ], 500);
 }
-
-if (!in_array($status, ["ativo", "conferindo", "finalizado"])) {
-    http_response_code(400);
-    echo json_encode(["ok" => false, "erro" => "Status inválido"]);
-    exit;
-}
-
-$stmt = $pdo->prepare("UPDATE drivers SET status = ? WHERE id = ?");
-$stmt->execute([$status, $id]);
-
-echo json_encode([
-    "ok" => true,
-    "id" => $id,
-    "status" => $status
-]);
