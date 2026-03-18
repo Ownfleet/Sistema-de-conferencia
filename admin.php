@@ -48,18 +48,24 @@ $totalConferindo = (int)($resumo["conferindo"] ?? 0);
 $totalFinalizados = (int)($resumo["finalizados"] ?? 0);
 
 /* =========================
-   RELATÓRIO DAS MESAS
+   RELATÓRIO COMPLETO MESAS
 ========================= */
 $stmtTempos = $pdo->query("
-    SELECT 
+    SELECT
         mesa_numero,
+        driver_ref,
+        driver_id,
+        driver_name,
         rota_texto,
-        duration_seconds,
+        vehicle_type,
         started_at,
-        finished_at
+        finished_at,
+        duration_seconds,
+        status,
+        created_at
     FROM mesa_tempos
     WHERE finished_at IS NOT NULL
-    ORDER BY mesa_numero, started_at
+    ORDER BY mesa_numero ASC, started_at ASC
 ");
 $temposRows = $stmtTempos->fetchAll();
 
@@ -74,31 +80,49 @@ foreach ($temposRows as $row) {
     if (!isset($relatorioMesas[$mesa])) {
         $relatorioMesas[$mesa] = [
             "mesa_numero" => $mesa,
-            "rotas" => 0,
+            "rotas_total" => 0,
             "segundos_total" => 0,
-            "letras" => []
+            "registros" => [],
+            "rotas_unicas" => [],
+            "motoristas_unicos" => []
         ];
     }
 
-    $relatorioMesas[$mesa]["rotas"]++;
-    $totalRotasMesas++;
-
     $duracao = (int)($row["duration_seconds"] ?? 0);
-    if ($duracao > 0) {
-        $relatorioMesas[$mesa]["segundos_total"] += $duracao;
-        $totalSegundosMesas += $duracao;
-    }
+    $rotaTexto = trim((string)($row["rota_texto"] ?? ""));
+    $driverName = trim((string)($row["driver_name"] ?? ""));
+    $driverId = trim((string)($row["driver_id"] ?? ""));
+    $vehicleType = trim((string)($row["vehicle_type"] ?? ""));
+    $startedAt = trim((string)($row["started_at"] ?? ""));
+    $finishedAt = trim((string)($row["finished_at"] ?? ""));
 
-    $rotaTexto = strtoupper(trim((string)($row["rota_texto"] ?? "")));
+    $relatorioMesas[$mesa]["rotas_total"]++;
+    $relatorioMesas[$mesa]["segundos_total"] += max(0, $duracao);
 
     if ($rotaTexto !== "") {
-        preg_match_all('/([A-Z])-\d+/', $rotaTexto, $matches);
-        if (!empty($matches[1])) {
-            foreach ($matches[1] as $letra) {
-                $relatorioMesas[$mesa]["letras"][$letra] = true;
-            }
-        }
+        $relatorioMesas[$mesa]["rotas_unicas"][$rotaTexto] = true;
     }
+
+    if ($driverName !== "") {
+        $nomeMotorista = $driverName;
+        if ($driverId !== "") {
+            $nomeMotorista .= " (ID: {$driverId})";
+        }
+        $relatorioMesas[$mesa]["motoristas_unicos"][$nomeMotorista] = true;
+    }
+
+    $relatorioMesas[$mesa]["registros"][] = [
+        "rota_texto" => $rotaTexto,
+        "driver_name" => $driverName,
+        "driver_id" => $driverId,
+        "vehicle_type" => $vehicleType,
+        "duration_seconds" => $duracao,
+        "started_at" => $startedAt,
+        "finished_at" => $finishedAt
+    ];
+
+    $totalRotasMesas++;
+    $totalSegundosMesas += max(0, $duracao);
 }
 
 ksort($relatorioMesas);
@@ -120,9 +144,70 @@ function formatarDuracao($segundos) {
            str_pad((string)$s, 2, "0", STR_PAD_LEFT);
 }
 
-$tempoMedioGeral = $totalRotasMesas > 0 ? (int)floor($totalSegundosMesas / $totalRotasMesas) : 0;
-?>
+function formatarMinutosPorRota($segundos) {
+    $segundos = (int)$segundos;
+    if ($segundos <= 0) return "0 min";
 
+    $min = floor($segundos / 60);
+    $sec = $segundos % 60;
+
+    if ($min <= 0) {
+        return $sec . " seg";
+    }
+
+    return $min . " min " . str_pad((string)$sec, 2, "0", STR_PAD_LEFT) . " seg";
+}
+
+$tempoMedioGeral = $totalRotasMesas > 0 ? (int)floor($totalSegundosMesas / $totalRotasMesas) : 0;
+$rotasPorHoraGeral = $totalSegundosMesas > 0 ? round($totalRotasMesas / ($totalSegundosMesas / 3600), 2) : 0;
+
+/* =========================
+   EXPORTAR CSV
+========================= */
+if (isset($_GET["export"]) && $_GET["export"] === "mesas_csv") {
+    header("Content-Type: text/csv; charset=UTF-8");
+    header("Content-Disposition: attachment; filename=relatorio_mesas.csv");
+
+    $out = fopen("php://output", "w");
+    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+
+    fputcsv($out, [
+        "Mesa",
+        "Qtd Rotas",
+        "Tempo Total",
+        "Tempo Medio por Rota",
+        "Rotas por Hora",
+        "1 Rota a Cada",
+        "Rotas Feitas",
+        "Motoristas"
+    ], ";");
+
+    foreach ($relatorioMesas as $mesa => $dados) {
+        $rotas = array_keys($dados["rotas_unicas"]);
+        sort($rotas);
+
+        $motoristas = array_keys($dados["motoristas_unicos"]);
+        sort($motoristas);
+
+        $tempoMedioMesa = $dados["rotas_total"] > 0 ? (int)floor($dados["segundos_total"] / $dados["rotas_total"]) : 0;
+        $rotasPorHoraMesa = $dados["segundos_total"] > 0 ? round($dados["rotas_total"] / ($dados["segundos_total"] / 3600), 2) : 0;
+
+        fputcsv($out, [
+            "Mesa " . $dados["mesa_numero"],
+            $dados["rotas_total"],
+            formatarDuracao($dados["segundos_total"]),
+            formatarDuracao($tempoMedioMesa),
+            $rotasPorHoraMesa,
+            formatarMinutosPorRota($tempoMedioMesa),
+            implode(" | ", $rotas),
+            implode(" | ", $motoristas)
+        ], ";");
+    }
+
+    fclose($out);
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -166,16 +251,11 @@ $tempoMedioGeral = $totalRotasMesas > 0 ? (int)floor($totalSegundosMesas / $tota
     --shadow-lg:0 18px 40px rgba(15,23,42,.14);
 
     --radius:18px;
-    --radius-sm:12px;
 }
 
-*{
-    box-sizing:border-box;
-}
+*{ box-sizing:border-box; }
 
-html{
-    scroll-behavior:smooth;
-}
+html{ scroll-behavior:smooth; }
 
 body{
     margin:0;
@@ -209,7 +289,6 @@ body{
     margin:0;
     font-size:24px;
     font-weight:800;
-    letter-spacing:.2px;
 }
 
 .topo-sub{
@@ -224,7 +303,7 @@ body{
 }
 
 .container{
-    max-width:1400px;
+    max-width:1450px;
     margin:0 auto;
     padding:28px;
 }
@@ -238,15 +317,25 @@ body{
     box-shadow:var(--shadow-sm);
 }
 
-.card:hover{
-    box-shadow:var(--shadow-md);
-}
-
 .card h3{
     margin:0 0 18px 0;
     font-size:20px;
     font-weight:800;
-    color:var(--text);
+}
+
+.bloco-info{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    margin-bottom:16px;
+    flex-wrap:wrap;
+}
+
+.bloco-info p{
+    margin:0;
+    color:var(--muted);
+    font-size:14px;
 }
 
 .btn{
@@ -273,46 +362,12 @@ body{
     opacity:.96;
 }
 
-.btn:active{
-    transform:translateY(0);
-}
+.btn-brand{ background:linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); }
+.btn-sec{ background:linear-gradient(135deg, var(--gray) 0%, var(--gray-2) 100%); }
+.btn-edit{ background:linear-gradient(135deg, var(--blue) 0%, var(--blue-2) 100%); }
+.btn-sair{ background:linear-gradient(135deg, var(--dark) 0%, var(--dark-2) 100%); }
 
-.btn-brand{
-    background:linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
-}
-
-.btn-brand:hover{
-    box-shadow:0 10px 22px rgba(238,77,45,.24);
-}
-
-.btn-sec{
-    background:linear-gradient(135deg, var(--gray) 0%, var(--gray-2) 100%);
-}
-
-.btn-sec:hover{
-    box-shadow:0 10px 22px rgba(107,114,128,.22);
-}
-
-.btn-edit{
-    background:linear-gradient(135deg, var(--blue) 0%, var(--blue-2) 100%);
-}
-
-.btn-edit:hover{
-    box-shadow:0 10px 22px rgba(37,99,235,.24);
-}
-
-.btn-sair{
-    background:linear-gradient(135deg, var(--dark) 0%, var(--dark-2) 100%);
-}
-
-.btn-sair:hover{
-    box-shadow:0 10px 22px rgba(17,24,39,.28);
-}
-
-.form-area{
-    display:grid;
-    gap:14px;
-}
+.form-area{ display:grid; gap:14px; }
 
 .form-linha{
     display:flex;
@@ -325,34 +380,6 @@ body{
     background:#fff;
 }
 
-.file-custom{
-    position:relative;
-    display:inline-flex;
-    align-items:center;
-    gap:10px;
-    flex-wrap:wrap;
-}
-
-.file-custom input[type="file"]{
-    max-width:320px;
-    font-size:14px;
-}
-
-.bloco-info{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:12px;
-    margin-bottom:16px;
-    flex-wrap:wrap;
-}
-
-.bloco-info p{
-    margin:0;
-    color:var(--muted);
-    font-size:14px;
-}
-
 .kpis{
     display:grid;
     grid-template-columns:repeat(4, minmax(180px, 1fr));
@@ -360,9 +387,9 @@ body{
     margin-bottom:18px;
 }
 
-.kpis-3{
+.kpis-4{
     display:grid;
-    grid-template-columns:repeat(3, minmax(180px, 1fr));
+    grid-template-columns:repeat(4, minmax(180px, 1fr));
     gap:14px;
     margin-bottom:18px;
 }
@@ -388,25 +415,6 @@ body{
     color:var(--text);
 }
 
-.kpi.total{
-    background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
-}
-
-.kpi.ativo{
-    background:linear-gradient(180deg,#ffffff 0%,#f3fff7 100%);
-    border-color:#d9fbe5;
-}
-
-.kpi.conferindo{
-    background:linear-gradient(180deg,#ffffff 0%,#fff9ef 100%);
-    border-color:#fde7bf;
-}
-
-.kpi.finalizado{
-    background:linear-gradient(180deg,#ffffff 0%,#f6f8fb 100%);
-    border-color:#e5e7eb;
-}
-
 .kpi.relatorio{
     background:linear-gradient(180deg,#ffffff 0%,#fff7ed 100%);
     border-color:#fed7aa;
@@ -428,19 +436,12 @@ body{
     color:var(--text);
     font-size:13px;
     font-weight:800;
-    transition:.15s ease;
-}
-
-.filtro-btn:hover{
-    transform:translateY(-1px);
-    box-shadow:var(--shadow-sm);
 }
 
 .filtro-ativo{
     background:linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
     color:#fff;
     border-color:transparent;
-    box-shadow:0 10px 22px rgba(238,77,45,.20);
 }
 
 .table-wrap{
@@ -454,12 +455,10 @@ table{
     width:100%;
     border-collapse:separate;
     border-spacing:0;
-    min-width:920px;
+    min-width:1100px;
 }
 
 thead th{
-    position:sticky;
-    top:0;
     background:linear-gradient(180deg, #f9fbfd 0%, #f1f5f9 100%);
     color:#1f2937;
     font-weight:800;
@@ -474,20 +473,7 @@ tbody td{
     padding:14px 12px;
     border-bottom:1px solid #eef2f7;
     font-size:14px;
-    vertical-align:middle;
-}
-
-tbody tr{
-    background:#fff;
-    transition:background .15s ease;
-}
-
-tbody tr:hover{
-    background:#fafcff;
-}
-
-tbody tr:last-child td{
-    border-bottom:none;
+    vertical-align:top;
 }
 
 .status{
@@ -513,27 +499,22 @@ tbody tr:last-child td{
     color:#166534;
     background:#ecfdf3;
 }
-
 .status-ativo::before{
     background:#22c55e;
-    box-shadow:0 0 10px rgba(34,197,94,.45);
 }
 
 .status-conferindo{
     color:#92400e;
     background:#fff7ed;
 }
-
 .status-conferindo::before{
     background:#f59e0b;
-    box-shadow:0 0 10px rgba(245,158,11,.45);
 }
 
 .status-finalizado{
     color:#475467;
     background:#f2f4f7;
 }
-
 .status-finalizado::before{
     background:#98a2b3;
 }
@@ -556,85 +537,38 @@ tbody tr:last-child td{
     font-size:15px;
 }
 
-.letras-box{
+.lista-detalhes{
     display:flex;
+    flex-direction:column;
     gap:8px;
-    flex-wrap:wrap;
 }
 
-.letra-tag{
-    background:#fff7ed;
-    color:#9a3412;
-    border:1px solid #fdba74;
-    padding:6px 10px;
-    border-radius:999px;
-    font-size:12px;
-    font-weight:800;
+.item-detalhe{
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:10px 12px;
+    line-height:1.45;
 }
 
 @media (max-width: 980px){
-    .container{
-        padding:16px;
-    }
-
+    .container{ padding:16px; }
     .topo{
         padding:18px 16px;
         flex-direction:column;
         align-items:flex-start;
     }
-
-    .topo h2{
-        font-size:22px;
-    }
-
-    .acoes-topo{
-        width:100%;
-    }
-
-    .acoes-topo .btn{
-        flex:1 1 auto;
-    }
-
-    .card{
-        padding:18px;
-    }
-
-    .form-linha{
-        align-items:flex-start;
-    }
-
-    .kpis,
-    .kpis-3{
+    .kpis, .kpis-4{
         grid-template-columns:repeat(2, minmax(140px, 1fr));
     }
 }
 
 @media (max-width: 640px){
-    .topo h2{
-        font-size:20px;
+    .kpis, .kpis-4{
+        grid-template-columns:1fr;
     }
-
-    .topo-sub{
-        font-size:12px;
-    }
-
     .btn{
         width:100%;
-    }
-
-    .form-linha{
-        flex-direction:column;
-        align-items:stretch;
-    }
-
-    .file-custom input[type="file"]{
-        max-width:100%;
-        width:100%;
-    }
-
-    .kpis,
-    .kpis-3{
-        grid-template-columns:1fr;
     }
 }
 </style>
@@ -645,11 +579,12 @@ tbody tr:last-child td{
 <div class="topo">
     <div class="topo-esq">
         <h2>Painel Administrador</h2>
-        <div class="topo-sub">Gerencie rotas, motoristas, status e relatório das mesas</div>
+        <div class="topo-sub">Gerencie rotas, motoristas, status e produtividade das mesas</div>
     </div>
 
     <div class="acoes-topo">
         <a href="#relatorio-mesas" class="btn btn-brand">Relatório das Mesas</a>
+        <a href="admin.php?export=mesas_csv" class="btn btn-sec">Baixar Relatório CSV</a>
         <a href="conferente.php" class="btn btn-sec">Painel Conferente</a>
         <a href="logout.php" class="btn btn-sair">Sair</a>
     </div>
@@ -664,22 +599,19 @@ tbody tr:last-child td{
         </div>
 
         <div class="kpis">
-            <div class="kpi total">
+            <div class="kpi">
                 <div class="kpi-label">Total</div>
                 <div class="kpi-value"><?= $totalGeral ?></div>
             </div>
-
-            <div class="kpi ativo">
+            <div class="kpi">
                 <div class="kpi-label">Ativos</div>
                 <div class="kpi-value"><?= $totalAtivos ?></div>
             </div>
-
-            <div class="kpi conferindo">
+            <div class="kpi">
                 <div class="kpi-label">Conferindo</div>
                 <div class="kpi-value"><?= $totalConferindo ?></div>
             </div>
-
-            <div class="kpi finalizado">
+            <div class="kpi">
                 <div class="kpi-label">Finalizados</div>
                 <div class="kpi-value"><?= $totalFinalizados ?></div>
             </div>
@@ -694,16 +626,12 @@ tbody tr:last-child td{
 
         <div class="form-area">
             <form action="importar_normal.php" method="post" enctype="multipart/form-data" class="form-linha">
-                <div class="file-custom">
-                    <input type="file" name="arquivo" required>
-                </div>
+                <input type="file" name="arquivo" required>
                 <button class="btn btn-brand" type="submit">Importar Normal</button>
             </form>
 
             <form action="importar_moto.php" method="post" enctype="multipart/form-data" class="form-linha">
-                <div class="file-custom">
-                    <input type="file" name="arquivo" required>
-                </div>
+                <input type="file" name="arquivo" required>
                 <button class="btn btn-brand" type="submit">Importar Moto</button>
             </form>
 
@@ -739,19 +667,14 @@ tbody tr:last-child td{
                         <th>Ação</th>
                     </tr>
                 </thead>
-
                 <tbody>
                     <?php if (count($drivers) > 0): ?>
                         <?php foreach($drivers as $d): ?>
                             <?php
                                 $status = strtolower(trim((string)$d["status"]));
                                 $statusClass = "status-finalizado";
-
-                                if ($status === "ativo") {
-                                    $statusClass = "status-ativo";
-                                } elseif ($status === "conferindo") {
-                                    $statusClass = "status-conferindo";
-                                }
+                                if ($status === "ativo") $statusClass = "status-ativo";
+                                elseif ($status === "conferindo") $statusClass = "status-conferindo";
                             ?>
                             <tr>
                                 <td><span class="tag"><?= htmlspecialchars($d["driver_id"]) ?></span></td>
@@ -759,14 +682,8 @@ tbody tr:last-child td{
                                 <td><?= htmlspecialchars($d["cluster_text"]) ?></td>
                                 <td><strong><?= htmlspecialchars($d["packages_total"]) ?></strong></td>
                                 <td><?= htmlspecialchars($d["vehicle_type"]) ?></td>
-                                <td>
-                                    <span class="status <?= $statusClass ?>">
-                                        <?= htmlspecialchars($d["status"]) ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <a class="btn btn-edit" href="editar_motorista.php?id=<?= $d["id"] ?>">Editar</a>
-                                </td>
+                                <td><span class="status <?= $statusClass ?>"><?= htmlspecialchars($d["status"]) ?></span></td>
+                                <td><a class="btn btn-edit" href="editar_motorista.php?id=<?= $d["id"] ?>">Editar</a></td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -781,24 +698,26 @@ tbody tr:last-child td{
 
     <div class="card" id="relatorio-mesas">
         <div class="bloco-info">
-            <h3>Relatório das Mesas</h3>
-            <p>Mostra quantas rotas cada mesa fez, as letras atendidas e o tempo médio por rota.</p>
+            <h3>Relatório Completo das Mesas</h3>
+            <p>Mostra produtividade real de cada mesa com rotas, motoristas e médias.</p>
         </div>
 
-        <div class="kpis-3">
+        <div class="kpis-4">
             <div class="kpi relatorio">
                 <div class="kpi-label">Total de Rotas Registradas</div>
                 <div class="kpi-value"><?= $totalRotasMesas ?></div>
             </div>
-
             <div class="kpi relatorio">
                 <div class="kpi-label">Tempo Médio Geral</div>
                 <div class="kpi-value"><?= formatarDuracao($tempoMedioGeral) ?></div>
             </div>
-
             <div class="kpi relatorio">
-                <div class="kpi-label">Mesas com Registro</div>
-                <div class="kpi-value"><?= count($relatorioMesas) ?></div>
+                <div class="kpi-label">Rotas por Hora (Geral)</div>
+                <div class="kpi-value"><?= $rotasPorHoraGeral ?></div>
+            </div>
+            <div class="kpi relatorio">
+                <div class="kpi-label">1 Rota a Cada</div>
+                <div class="kpi-value"><?= formatarMinutosPorRota($tempoMedioGeral) ?></div>
             </div>
         </div>
 
@@ -807,41 +726,66 @@ tbody tr:last-child td{
                 <thead>
                     <tr>
                         <th>Mesa</th>
-                        <th>Rotas Feitas</th>
-                        <th>Letras Feitas</th>
-                        <th>Tempo Médio por Rota</th>
+                        <th>Qtd Rotas</th>
+                        <th>Rotas por Hora</th>
+                        <th>Média por Rota</th>
+                        <th>1 Rota a Cada</th>
                         <th>Tempo Total</th>
+                        <th>Rotas Feitas</th>
+                        <th>Motoristas</th>
+                        <th>Detalhamento</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (!empty($relatorioMesas)): ?>
                         <?php foreach ($relatorioMesas as $mesa => $dados): ?>
                             <?php
-                                $letras = array_keys($dados["letras"]);
-                                sort($letras);
-                                $tempoMedioMesa = $dados["rotas"] > 0 ? (int)floor($dados["segundos_total"] / $dados["rotas"]) : 0;
+                                $rotas = array_keys($dados["rotas_unicas"]);
+                                sort($rotas);
+
+                                $motoristas = array_keys($dados["motoristas_unicos"]);
+                                sort($motoristas);
+
+                                $tempoMedioMesa = $dados["rotas_total"] > 0 ? (int)floor($dados["segundos_total"] / $dados["rotas_total"]) : 0;
+                                $rotasPorHoraMesa = $dados["segundos_total"] > 0 ? round($dados["rotas_total"] / ($dados["segundos_total"] / 3600), 2) : 0;
                             ?>
                             <tr>
                                 <td><span class="tag">Mesa <?= (int)$dados["mesa_numero"] ?></span></td>
-                                <td><strong><?= (int)$dados["rotas"] ?></strong></td>
+                                <td><strong><?= (int)$dados["rotas_total"] ?></strong></td>
+                                <td><strong><?= $rotasPorHoraMesa ?></strong></td>
+                                <td><strong><?= formatarDuracao($tempoMedioMesa) ?></strong></td>
+                                <td><strong><?= formatarMinutosPorRota($tempoMedioMesa) ?></strong></td>
+                                <td><?= formatarDuracao($dados["segundos_total"]) ?></td>
                                 <td>
-                                    <div class="letras-box">
-                                        <?php if (!empty($letras)): ?>
-                                            <?php foreach ($letras as $letra): ?>
-                                                <span class="letra-tag"><?= htmlspecialchars($letra) ?></span>
-                                            <?php endforeach; ?>
-                                        <?php else: ?>
-                                            <span class="tag">Sem letra</span>
-                                        <?php endif; ?>
+                                    <div class="lista-detalhes">
+                                        <?php foreach ($rotas as $rota): ?>
+                                            <div class="item-detalhe"><?= htmlspecialchars($rota) ?></div>
+                                        <?php endforeach; ?>
                                     </div>
                                 </td>
-                                <td><strong><?= formatarDuracao($tempoMedioMesa) ?></strong></td>
-                                <td><?= formatarDuracao($dados["segundos_total"]) ?></td>
+                                <td>
+                                    <div class="lista-detalhes">
+                                        <?php foreach ($motoristas as $motorista): ?>
+                                            <div class="item-detalhe"><?= htmlspecialchars($motorista) ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="lista-detalhes">
+                                        <?php foreach ($dados["registros"] as $registro): ?>
+                                            <div class="item-detalhe">
+                                                <strong>Rota:</strong> <?= htmlspecialchars($registro["rota_texto"]) ?><br>
+                                                <strong>Motorista:</strong> <?= htmlspecialchars($registro["driver_name"]) ?><br>
+                                                <strong>Tempo:</strong> <?= formatarDuracao($registro["duration_seconds"]) ?>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="5" class="vazio">Nenhum registro de tempo finalizado encontrado nas mesas.</td>
+                            <td colspan="9" class="vazio">Nenhum registro finalizado encontrado para as mesas.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -853,17 +797,3 @@ tbody tr:last-child td{
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
