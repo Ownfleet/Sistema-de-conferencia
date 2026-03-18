@@ -1,11 +1,5 @@
 <?php
 require "db.php";
-session_start();
-
-if (!isset($_SESSION["user"])) {
-    header("Location: login.php");
-    exit;
-}
 
 $quantidadeMesas = 18;
 
@@ -140,8 +134,6 @@ body.modal-open{
     margin:0 0 18px 0;
     font-size:24px;
 }
-
-/* MESAS ATUALIZADAS */
 .mesas-grid{
     display:grid;
     grid-template-columns:repeat(auto-fit, minmax(130px, 130px));
@@ -560,6 +552,30 @@ body.modal-open{
     font-size:16px;
     font-weight:900;
     color:#111827;
+}
+.cronometro-box{
+    margin-top:16px;
+    background:#0f172a;
+    color:#fff;
+    border-radius:18px;
+    padding:16px;
+    box-shadow:0 10px 24px rgba(15,23,42,.18);
+}
+.cronometro-label{
+    font-size:13px;
+    opacity:.8;
+    margin-bottom:8px;
+    font-weight:700;
+}
+.cronometro-tempo{
+    font-size:34px;
+    font-weight:900;
+    letter-spacing:1px;
+}
+.cronometro-rota{
+    margin-top:6px;
+    font-size:14px;
+    opacity:.9;
 }
 @keyframes spin{
     to{ transform:rotate(360deg); }
