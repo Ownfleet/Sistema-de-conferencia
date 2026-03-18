@@ -1,131 +1,155 @@
 <?php
 require "db.php";
-
 header("Content-Type: application/json; charset=utf-8");
 
-$action = $_REQUEST["action"] ?? "";
-
-function json_out($arr, $code = 200){
-    http_response_code($code);
-    echo json_encode($arr, JSON_UNESCAPED_UNICODE);
+function responder($data, $status = 200){
+    http_response_code($status);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-if ($action === "start") {
-    $mesa = (int)($_POST["mesa"] ?? 0);
-    $driverRef = (int)($_POST["driver_ref"] ?? 0);
-    $driverId = trim($_POST["driver_id"] ?? "");
-    $driverName = trim($_POST["driver_name"] ?? "");
-    $rotaTexto = trim($_POST["rota_texto"] ?? "");
-    $vehicleType = trim($_POST["vehicle_type"] ?? "");
+$action = $_POST["action"] ?? $_GET["action"] ?? "";
 
-    if ($mesa <= 0 || $rotaTexto === "") {
-        json_out(["ok" => false, "erro" => "Dados inválidos para iniciar cronômetro."], 400);
-    }
-
-    $stmtAberto = $pdo->prepare("
-        SELECT id
-        FROM mesa_tempos
-        WHERE mesa_numero = ?
-          AND status = 'conferindo'
-        ORDER BY id DESC
-        LIMIT 1
-    ");
-    $stmtAberto->execute([$mesa]);
-    $aberto = $stmtAberto->fetch();
-
-    if ($aberto) {
-        json_out(["ok" => false, "erro" => "Já existe um cronômetro em andamento nesta mesa."], 400);
-    }
-
-    $stmt = $pdo->prepare("
-        INSERT INTO mesa_tempos (
-            mesa_numero, driver_ref, driver_id, driver_name, rota_texto, vehicle_type, started_at, status
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW(), 'conferindo')
-        RETURNING id, started_at
-    ");
-    $stmt->execute([$mesa, $driverRef ?: null, $driverId, $driverName, $rotaTexto, $vehicleType]);
-    $row = $stmt->fetch();
-
-    json_out([
-        "ok" => true,
-        "tempo_id" => $row["id"],
-        "started_at" => $row["started_at"]
-    ]);
+if (!$action) {
+    responder(["ok" => false, "erro" => "Ação não informada"], 400);
 }
 
-if ($action === "finish") {
-    $mesa = (int)($_POST["mesa"] ?? 0);
-    $rotaTexto = trim($_POST["rota_texto"] ?? "");
+try {
 
-    if ($mesa <= 0 || $rotaTexto === "") {
-        json_out(["ok" => false, "erro" => "Dados inválidos para finalizar cronômetro."], 400);
+    // ================================
+    // ▶️ INICIAR CRONÔMETRO
+    // ================================
+    if ($action === "start") {
+
+        $mesa = $_POST["mesa"] ?? "";
+        $driverRef = $_POST["driver_ref"] ?? null;
+        $driverId = $_POST["driver_id"] ?? "";
+        $driverName = $_POST["driver_name"] ?? "";
+        $rota = $_POST["rota_texto"] ?? "";
+        $vehicle = $_POST["vehicle_type"] ?? "";
+
+        if (!$mesa || !$rota) {
+            responder(["ok" => false, "erro" => "Dados inválidos"], 400);
+        }
+
+        // Fecha qualquer anterior aberta na mesma mesa
+        $pdo->prepare("
+            UPDATE tempo_mesa 
+            SET finished_at = NOW()
+            WHERE mesa = :mesa AND finished_at IS NULL
+        ")->execute([":mesa" => $mesa]);
+
+        // Cria novo registro
+        $stmt = $pdo->prepare("
+            INSERT INTO tempo_mesa 
+            (mesa, driver_ref, driver_id, driver_name, rota_texto, vehicle_type, started_at)
+            VALUES (:mesa, :driver_ref, :driver_id, :driver_name, :rota_texto, :vehicle_type, NOW())
+            RETURNING started_at
+        ");
+
+        $stmt->execute([
+            ":mesa" => $mesa,
+            ":driver_ref" => $driverRef,
+            ":driver_id" => $driverId,
+            ":driver_name" => $driverName,
+            ":rota_texto" => $rota,
+            ":vehicle_type" => $vehicle
+        ]);
+
+        $started = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        responder([
+            "ok" => true,
+            "started_at" => $started["started_at"]
+        ]);
     }
 
-    $stmt = $pdo->prepare("
-        SELECT id, started_at
-        FROM mesa_tempos
-        WHERE mesa_numero = ?
-          AND rota_texto = ?
-          AND status = 'conferindo'
-        ORDER BY id DESC
-        LIMIT 1
-    ");
-    $stmt->execute([$mesa, $rotaTexto]);
-    $row = $stmt->fetch();
+    // ================================
+    // ⏹ FINALIZAR CRONÔMETRO
+    // ================================
+    if ($action === "finish") {
 
-    if (!$row) {
-        json_out(["ok" => false, "erro" => "Nenhum cronômetro em andamento encontrado para esta mesa/rota."], 404);
+        $mesa = $_POST["mesa"] ?? "";
+        $rota = $_POST["rota_texto"] ?? "";
+
+        if (!$mesa) {
+            responder(["ok" => false, "erro" => "Mesa inválida"], 400);
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE tempo_mesa
+            SET finished_at = NOW()
+            WHERE mesa = :mesa
+              AND finished_at IS NULL
+            RETURNING started_at, finished_at
+        ");
+
+        $stmt->execute([":mesa" => $mesa]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            responder([
+                "ok" => false,
+                "erro" => "Nenhum tempo ativo encontrado."
+            ]);
+        }
+
+        $inicio = new DateTime($row["started_at"]);
+        $fim = new DateTime($row["finished_at"]);
+
+        $segundos = $fim->getTimestamp() - $inicio->getTimestamp();
+
+        responder([
+            "ok" => true,
+            "duration_seconds" => $segundos
+        ]);
     }
 
-    $stmtUpd = $pdo->prepare("
-        UPDATE mesa_tempos
-        SET
-            finished_at = NOW(),
-            duration_seconds = GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - started_at)))::int),
-            status = 'finalizado'
-        WHERE id = ?
-        RETURNING id, started_at, finished_at, duration_seconds
-    ");
-    $stmtUpd->execute([$row["id"]]);
-    $upd = $stmtUpd->fetch();
+    // ================================
+    // 🔄 STATUS ATUAL (cronômetro rodando)
+    // ================================
+    if ($action === "status") {
 
-    json_out([
-        "ok" => true,
-        "tempo_id" => $upd["id"],
-        "started_at" => $upd["started_at"],
-        "finished_at" => $upd["finished_at"],
-        "duration_seconds" => (int)$upd["duration_seconds"]
-    ]);
+        $mesa = $_GET["mesa"] ?? "";
+
+        if (!$mesa) {
+            responder(["ok" => false, "erro" => "Mesa inválida"], 400);
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM tempo_mesa
+            WHERE mesa = :mesa
+              AND finished_at IS NULL
+            ORDER BY started_at DESC
+            LIMIT 1
+        ");
+
+        $stmt->execute([":mesa" => $mesa]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            responder([
+                "ok" => true,
+                "ativo" => false
+            ]);
+        }
+
+        responder([
+            "ok" => true,
+            "ativo" => true,
+            "registro" => [
+                "started_at" => $row["started_at"],
+                "rota_texto" => $row["rota_texto"]
+            ]
+        ]);
+    }
+
+    responder(["ok" => false, "erro" => "Ação inválida"], 400);
+
+} catch (Throwable $e) {
+    responder([
+        "ok" => false,
+        "erro" => $e->getMessage()
+    ], 500);
 }
-
-if ($action === "status") {
-    $mesa = (int)($_GET["mesa"] ?? 0);
-
-    if ($mesa <= 0) {
-        json_out(["ok" => false, "erro" => "Mesa inválida."], 400);
-    }
-
-    $stmt = $pdo->prepare("
-        SELECT id, mesa_numero, driver_ref, driver_id, driver_name, rota_texto, vehicle_type, started_at, status
-        FROM mesa_tempos
-        WHERE mesa_numero = ?
-          AND status = 'conferindo'
-        ORDER BY id DESC
-        LIMIT 1
-    ");
-    $stmt->execute([$mesa]);
-    $row = $stmt->fetch();
-
-    if (!$row) {
-        json_out(["ok" => true, "ativo" => false]);
-    }
-
-    json_out([
-        "ok" => true,
-        "ativo" => true,
-        "registro" => $row
-    ]);
-}
-
-json_out(["ok" => false, "erro" => "Ação inválida."], 400);
