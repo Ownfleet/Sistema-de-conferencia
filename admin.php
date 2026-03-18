@@ -1,6 +1,5 @@
 <?php
 require "db.php";
-session_start();
 
 if (!isset($_SESSION["user"])) {
     header("Location: login.php");
@@ -48,9 +47,80 @@ $totalAtivos = (int)($resumo["ativos"] ?? 0);
 $totalConferindo = (int)($resumo["conferindo"] ?? 0);
 $totalFinalizados = (int)($resumo["finalizados"] ?? 0);
 
+/* =========================
+   RELATÓRIO DAS MESAS
+========================= */
+$stmtTempos = $pdo->query("
+    SELECT 
+        mesa_numero,
+        rota_texto,
+        duration_seconds,
+        started_at,
+        finished_at
+    FROM mesa_tempos
+    WHERE finished_at IS NOT NULL
+    ORDER BY mesa_numero, started_at
+");
+$temposRows = $stmtTempos->fetchAll();
+
+$relatorioMesas = [];
+$totalRotasMesas = 0;
+$totalSegundosMesas = 0;
+
+foreach ($temposRows as $row) {
+    $mesa = (int)($row["mesa_numero"] ?? 0);
+    if ($mesa <= 0) continue;
+
+    if (!isset($relatorioMesas[$mesa])) {
+        $relatorioMesas[$mesa] = [
+            "mesa_numero" => $mesa,
+            "rotas" => 0,
+            "segundos_total" => 0,
+            "letras" => []
+        ];
+    }
+
+    $relatorioMesas[$mesa]["rotas"]++;
+    $totalRotasMesas++;
+
+    $duracao = (int)($row["duration_seconds"] ?? 0);
+    if ($duracao > 0) {
+        $relatorioMesas[$mesa]["segundos_total"] += $duracao;
+        $totalSegundosMesas += $duracao;
+    }
+
+    $rotaTexto = strtoupper(trim((string)($row["rota_texto"] ?? "")));
+
+    if ($rotaTexto !== "") {
+        preg_match_all('/([A-Z])-\d+/', $rotaTexto, $matches);
+        if (!empty($matches[1])) {
+            foreach ($matches[1] as $letra) {
+                $relatorioMesas[$mesa]["letras"][$letra] = true;
+            }
+        }
+    }
+}
+
+ksort($relatorioMesas);
+
 function filtroAtivo($valorAtual, $valorFiltro) {
     return $valorAtual === $valorFiltro ? "filtro-ativo" : "";
 }
+
+function formatarDuracao($segundos) {
+    $segundos = (int)$segundos;
+    if ($segundos <= 0) return "00:00:00";
+
+    $h = floor($segundos / 3600);
+    $m = floor(($segundos % 3600) / 60);
+    $s = $segundos % 60;
+
+    return str_pad((string)$h, 2, "0", STR_PAD_LEFT) . ":" .
+           str_pad((string)$m, 2, "0", STR_PAD_LEFT) . ":" .
+           str_pad((string)$s, 2, "0", STR_PAD_LEFT);
+}
+
+$tempoMedioGeral = $totalRotasMesas > 0 ? (int)floor($totalSegundosMesas / $totalRotasMesas) : 0;
 ?>
 
 <!DOCTYPE html>
@@ -101,6 +171,10 @@ function filtroAtivo($valorAtual, $valorFiltro) {
 
 *{
     box-sizing:border-box;
+}
+
+html{
+    scroll-behavior:smooth;
 }
 
 body{
@@ -286,6 +360,13 @@ body{
     margin-bottom:18px;
 }
 
+.kpis-3{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(180px, 1fr));
+    gap:14px;
+    margin-bottom:18px;
+}
+
 .kpi{
     border-radius:16px;
     padding:16px 18px;
@@ -324,6 +405,11 @@ body{
 .kpi.finalizado{
     background:linear-gradient(180deg,#ffffff 0%,#f6f8fb 100%);
     border-color:#e5e7eb;
+}
+
+.kpi.relatorio{
+    background:linear-gradient(180deg,#ffffff 0%,#fff7ed 100%);
+    border-color:#fed7aa;
 }
 
 .filtros{
@@ -470,6 +556,22 @@ tbody tr:last-child td{
     font-size:15px;
 }
 
+.letras-box{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+}
+
+.letra-tag{
+    background:#fff7ed;
+    color:#9a3412;
+    border:1px solid #fdba74;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:800;
+}
+
 @media (max-width: 980px){
     .container{
         padding:16px;
@@ -501,7 +603,8 @@ tbody tr:last-child td{
         align-items:flex-start;
     }
 
-    .kpis{
+    .kpis,
+    .kpis-3{
         grid-template-columns:repeat(2, minmax(140px, 1fr));
     }
 }
@@ -529,7 +632,8 @@ tbody tr:last-child td{
         width:100%;
     }
 
-    .kpis{
+    .kpis,
+    .kpis-3{
         grid-template-columns:1fr;
     }
 }
@@ -541,10 +645,11 @@ tbody tr:last-child td{
 <div class="topo">
     <div class="topo-esq">
         <h2>Painel Administrador</h2>
-        <div class="topo-sub">Gerencie rotas, motoristas e status da operação</div>
+        <div class="topo-sub">Gerencie rotas, motoristas, status e relatório das mesas</div>
     </div>
 
     <div class="acoes-topo">
+        <a href="#relatorio-mesas" class="btn btn-brand">Relatório das Mesas</a>
         <a href="conferente.php" class="btn btn-sec">Painel Conferente</a>
         <a href="logout.php" class="btn btn-sair">Sair</a>
     </div>
@@ -674,7 +779,91 @@ tbody tr:last-child td{
         </div>
     </div>
 
+    <div class="card" id="relatorio-mesas">
+        <div class="bloco-info">
+            <h3>Relatório das Mesas</h3>
+            <p>Mostra quantas rotas cada mesa fez, as letras atendidas e o tempo médio por rota.</p>
+        </div>
+
+        <div class="kpis-3">
+            <div class="kpi relatorio">
+                <div class="kpi-label">Total de Rotas Registradas</div>
+                <div class="kpi-value"><?= $totalRotasMesas ?></div>
+            </div>
+
+            <div class="kpi relatorio">
+                <div class="kpi-label">Tempo Médio Geral</div>
+                <div class="kpi-value"><?= formatarDuracao($tempoMedioGeral) ?></div>
+            </div>
+
+            <div class="kpi relatorio">
+                <div class="kpi-label">Mesas com Registro</div>
+                <div class="kpi-value"><?= count($relatorioMesas) ?></div>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mesa</th>
+                        <th>Rotas Feitas</th>
+                        <th>Letras Feitas</th>
+                        <th>Tempo Médio por Rota</th>
+                        <th>Tempo Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (!empty($relatorioMesas)): ?>
+                        <?php foreach ($relatorioMesas as $mesa => $dados): ?>
+                            <?php
+                                $letras = array_keys($dados["letras"]);
+                                sort($letras);
+                                $tempoMedioMesa = $dados["rotas"] > 0 ? (int)floor($dados["segundos_total"] / $dados["rotas"]) : 0;
+                            ?>
+                            <tr>
+                                <td><span class="tag">Mesa <?= (int)$dados["mesa_numero"] ?></span></td>
+                                <td><strong><?= (int)$dados["rotas"] ?></strong></td>
+                                <td>
+                                    <div class="letras-box">
+                                        <?php if (!empty($letras)): ?>
+                                            <?php foreach ($letras as $letra): ?>
+                                                <span class="letra-tag"><?= htmlspecialchars($letra) ?></span>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <span class="tag">Sem letra</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                                <td><strong><?= formatarDuracao($tempoMedioMesa) ?></strong></td>
+                                <td><?= formatarDuracao($dados["segundos_total"]) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="5" class="vazio">Nenhum registro de tempo finalizado encontrado nas mesas.</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
