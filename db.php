@@ -16,7 +16,7 @@ $host = $parts['host'] ?? '';
 $port = $parts['port'] ?? 5432;
 $dbname = isset($parts['path']) ? ltrim($parts['path'], '/') : 'postgres';
 $user = $parts['user'] ?? '';
-$password = $parts['pass'] ?? '';
+$password = urldecode($parts['pass'] ?? '');
 
 try {
     $pdo = new PDO(
