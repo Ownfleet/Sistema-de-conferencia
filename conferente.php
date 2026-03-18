@@ -645,6 +645,12 @@ body.modal-open{
         <div id="resultadoMesa" class="resultado-mesa">
             <div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>
         </div>
+
+        <div id="cronometroMesa" class="cronometro-box" style="display:none;">
+            <div class="cronometro-label">TEMPO DE CONFERÊNCIA</div>
+            <div class="cronometro-tempo" id="cronometroTempo">00:00:00</div>
+            <div class="cronometro-rota" id="cronometroRota"></div>
+        </div>
     </div>
 </div>
 
@@ -660,8 +666,14 @@ const btnPesquisarMesa = document.getElementById("btnPesquisarMesa");
 const btnLimparMesa = document.getElementById("btnLimparMesa");
 const botoesMesa = document.querySelectorAll(".btn-mesa");
 const loadingOverlay = document.getElementById("loadingOverlay");
+const cronometroMesa = document.getElementById("cronometroMesa");
+const cronometroTempo = document.getElementById("cronometroTempo");
+const cronometroRota = document.getElementById("cronometroRota");
 
 let mesaAtual = null;
+let cronometroInterval = null;
+let cronometroInicio = null;
+let cronometroRotaAtual = "";
 
 function mostrarLoading(texto = "Carregando painel..."){
     const textoEl = loadingOverlay.querySelector(".loading-text");
@@ -703,6 +715,7 @@ function abrirMesa(mesa){
     inputMesa.value = salvo || "";
 
     renderResultadoMesa(salvo || "");
+    carregarCronometroMesa();
     setTimeout(() => inputMesa.focus(), 50);
 }
 
@@ -733,6 +746,64 @@ function escaparHtml(str){
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+}
+
+function formatarDuracao(segundos){
+    const s = Math.max(0, parseInt(segundos || 0, 10));
+    const h = String(Math.floor(s / 3600)).padStart(2, "0");
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+    const sec = String(s % 60).padStart(2, "0");
+    return `${h}:${m}:${sec}`;
+}
+
+function pararCronometroVisual(){
+    if (cronometroInterval) {
+        clearInterval(cronometroInterval);
+        cronometroInterval = null;
+    }
+    cronometroInicio = null;
+    cronometroRotaAtual = "";
+    cronometroMesa.style.display = "none";
+    cronometroTempo.textContent = "00:00:00";
+    cronometroRota.textContent = "";
+}
+
+function iniciarCronometroVisual(dataInicio, rotaTexto){
+    if (cronometroInterval) clearInterval(cronometroInterval);
+
+    cronometroInicio = new Date(dataInicio);
+    cronometroRotaAtual = rotaTexto || "";
+
+    cronometroMesa.style.display = "block";
+    cronometroRota.textContent = cronometroRotaAtual ? `Rota em conferência: ${cronometroRotaAtual}` : "";
+
+    const tick = () => {
+        const agora = new Date();
+        const total = Math.floor((agora.getTime() - cronometroInicio.getTime()) / 1000);
+        cronometroTempo.textContent = formatarDuracao(total);
+    };
+
+    tick();
+    cronometroInterval = setInterval(tick, 1000);
+}
+
+async function carregarCronometroMesa(){
+    if (!mesaAtual) return;
+
+    try {
+        const resposta = await fetch(`tempo_mesa.php?action=status&mesa=${encodeURIComponent(mesaAtual)}`);
+        const texto = await resposta.text();
+        const data = JSON.parse(texto);
+
+        if (data.ok && data.ativo && data.registro) {
+            iniciarCronometroVisual(data.registro.started_at, data.registro.rota_texto);
+        } else {
+            pararCronometroVisual();
+        }
+    } catch (e) {
+        console.error("Erro ao carregar cronômetro da mesa:", e);
+        pararCronometroVisual();
+    }
 }
 
 async function apiMesa(action, payload = {}, method = "POST"){
@@ -960,6 +1031,32 @@ async function alterarStatusMesa(driverId, novoStatus){
                 botoes.forEach(btn => btn.disabled = false);
                 return;
             }
+
+            const formTempo = new FormData();
+            formTempo.append("action", "start");
+            formTempo.append("mesa", mesaAtual);
+            formTempo.append("driver_ref", motorista.id);
+            formTempo.append("driver_id", motorista.driver_id);
+            formTempo.append("driver_name", motorista.driver_name);
+            formTempo.append("rota_texto", motorista.cluster_text);
+            formTempo.append("vehicle_type", motorista.vehicle_type);
+
+            const respTempo = await fetch("tempo_mesa.php", {
+                method: "POST",
+                body: formTempo
+            });
+
+            const txtTempo = await respTempo.text();
+            const jsonTempo = JSON.parse(txtTempo);
+
+            if (!jsonTempo.ok) {
+                alert(jsonTempo.erro || "Erro ao iniciar cronômetro.");
+                botoes.forEach(btn => btn.disabled = false);
+                return;
+            }
+
+            iniciarCronometroVisual(jsonTempo.started_at, motorista.cluster_text);
+
         } catch (e) {
             alert("Erro ao verificar conflito da mesa: " + e.message);
             botoes.forEach(btn => btn.disabled = false);
@@ -1006,16 +1103,38 @@ async function alterarStatusMesa(driverId, novoStatus){
 
         if (novoStatus === "finalizado") {
             resultadoMesa.classList.remove("destacado-conferindo");
+
+            try {
+                const formTempoFim = new FormData();
+                formTempoFim.append("action", "finish");
+                formTempoFim.append("mesa", mesaAtual);
+                formTempoFim.append("rota_texto", motorista.cluster_text);
+
+                const respFim = await fetch("tempo_mesa.php", {
+                    method: "POST",
+                    body: formTempoFim
+                });
+
+                const txtFim = await respFim.text();
+                const jsonFim = JSON.parse(txtFim);
+
+                if (jsonFim.ok) {
+                    pararCronometroVisual();
+
+                    const feedbackTempo = document.createElement("div");
+                    feedbackTempo.className = "feedback-status finalizado";
+                    feedbackTempo.textContent = `Rota finalizada com sucesso. Tempo: ${formatarDuracao(jsonFim.duration_seconds)}`;
+                    resultadoMesa.appendChild(feedbackTempo);
+                }
+            } catch (e) {
+                console.error("Erro ao finalizar cronômetro:", e);
+            }
+
             try {
                 await apiMesa("clear", { mesa: mesaAtual });
             } catch (e) {
                 console.error("Erro ao limpar mesa após finalizar:", e.message);
             }
-
-            const feedback = document.createElement("div");
-            feedback.className = "feedback-status finalizado";
-            feedback.textContent = "Rota finalizada com sucesso.";
-            resultadoMesa.appendChild(feedback);
         }
 
     } catch (e) {
@@ -1067,6 +1186,7 @@ btnLimparMesa.addEventListener("click", async function(){
             console.error("Erro ao limpar mesa:", e.message);
         }
     }
+    pararCronometroVisual();
     resultadoMesa.classList.remove("destacado-conferindo");
     resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>';
 });
