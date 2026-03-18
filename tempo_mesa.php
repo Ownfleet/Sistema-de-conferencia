@@ -33,8 +33,7 @@ try {
 
         $stmtFecha = $pdo->prepare("
             UPDATE mesa_tempos
-            SET finished_at = NOW(),
-                status_mesa = 'finalizado'
+            SET finished_at = NOW()
             WHERE mesa_numero = :mesa_numero
               AND finished_at IS NULL
         ");
@@ -51,8 +50,7 @@ try {
                 nome_do_motorista,
                 rota_texto,
                 tipo_de_veiculo,
-                started_at,
-                status_mesa
+                started_at
             )
             VALUES
             (
@@ -62,8 +60,7 @@ try {
                 :nome_do_motorista,
                 :rota_texto,
                 :tipo_de_veiculo,
-                NOW(),
-                'conferindo'
+                NOW()
             )
             RETURNING started_at
         ");
@@ -94,8 +91,7 @@ try {
 
         $stmtFim = $pdo->prepare("
             UPDATE mesa_tempos
-            SET finished_at = NOW(),
-                status_mesa = 'finalizado'
+            SET finished_at = NOW()
             WHERE id = (
                 SELECT id
                 FROM mesa_tempos
@@ -148,8 +144,7 @@ try {
                 rota_texto,
                 tipo_de_veiculo,
                 started_at,
-                finished_at,
-                status_mesa
+                finished_at
             FROM mesa_tempos
             WHERE mesa_numero = :mesa_numero
               AND finished_at IS NULL
@@ -181,8 +176,7 @@ try {
                 "nome_do_motorista" => $row["nome_do_motorista"],
                 "rota_texto" => $row["rota_texto"],
                 "tipo_de_veiculo" => $row["tipo_de_veiculo"],
-                "started_at" => $row["started_at"],
-                "status_mesa" => $row["status_mesa"]
+                "started_at" => $row["started_at"]
             ]
         ]);
     }
