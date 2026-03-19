@@ -1,7 +1,6 @@
 <?php
 require "db.php";
 
-
 if (!isset($_SESSION["user"])) {
     header("Location: login.php");
     exit;
@@ -58,24 +57,32 @@ try {
 
     $pdo->beginTransaction();
 
+    // limpa a base atual antes da nova importação
+    $pdo->exec("DELETE FROM driver_clusters");
+    $pdo->exec("DELETE FROM drivers");
+    $pdo->exec("UPDATE imports SET is_active = false WHERE is_active = true");
+    $pdo->exec("DELETE FROM mesa_controle");
+    $pdo->exec("DELETE FROM mesas_controle");
+    $pdo->exec("DELETE FROM mesa_tempos");
+
     $stmtImport = $pdo->prepare("
-        insert into imports (import_type, imported_by, is_active)
-        values ('normal', ?, true)
-        returning id
+        INSERT INTO imports (import_type, imported_by, is_active, created_at)
+        VALUES ('normal', ?, true, NOW())
+        RETURNING id
     ");
     $stmtImport->execute([$_SESSION["user"]["email"]]);
     $importId = $stmtImport->fetchColumn();
 
     $stmtDriver = $pdo->prepare("
-        insert into drivers
+        INSERT INTO drivers
         (import_id, driver_id, driver_name, cluster_text, packages_total, vehicle_type, status, active)
-        values (?, ?, ?, ?, ?, ?, 'ativo', true)
-        returning id
+        VALUES (?, ?, ?, ?, ?, ?, 'ativo', true)
+        RETURNING id
     ");
 
     $stmtCluster = $pdo->prepare("
-        insert into driver_clusters (driver_ref, cluster_code, packages, sort_order)
-        values (?, ?, ?, ?)
+        INSERT INTO driver_clusters (driver_ref, cluster_code, packages, sort_order)
+        VALUES (?, ?, ?, ?)
     ");
 
     $linha = 0;
@@ -110,11 +117,27 @@ try {
         $driverRef = $stmtDriver->fetchColumn();
 
         $ordem = 1;
+        $qtdClusters = count($parsed["clusters"]);
+        $pacotesPorCluster = $qtdClusters > 0 && $parsed["packages_total"] > 0
+            ? (int) floor($parsed["packages_total"] / $qtdClusters)
+            : 0;
+
+        $restante = $qtdClusters > 0 && $parsed["packages_total"] > 0
+            ? $parsed["packages_total"] - ($pacotesPorCluster * $qtdClusters)
+            : 0;
+
         foreach ($parsed["clusters"] as $clusterCode) {
+            $pacotesCluster = $pacotesPorCluster;
+
+            if ($restante > 0) {
+                $pacotesCluster++;
+                $restante--;
+            }
+
             $stmtCluster->execute([
                 $driverRef,
                 $clusterCode,
-                0,
+                $pacotesCluster,
                 $ordem++
             ]);
         }
@@ -129,6 +152,10 @@ try {
     exit;
 
 } catch (Throwable $e) {
+    if (isset($handle) && is_resource($handle)) {
+        fclose($handle);
+    }
+
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
