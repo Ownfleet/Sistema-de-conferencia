@@ -1,9 +1,6 @@
 <?php
 require "db.php";
 
-header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-header("Pragma: no-cache");
-
 $quantidadeMesas = 18;
 
 $stmt = $pdo->query("
@@ -108,15 +105,23 @@ body{
     background:linear-gradient(180deg,#f7f8fc 0%,#eef2f7 100%);
     color:#1f2937;
 }
-body.modal-open{overflow:hidden}
+body.modal-open{
+    overflow:hidden;
+}
 .topo{
     background:linear-gradient(90deg,#8f3b2f 0%,#a04535 100%);
     color:#fff;
     padding:22px 30px;
     box-shadow:0 8px 24px rgba(143,59,47,.18);
 }
-.topo h2{margin:0;font-size:30px;letter-spacing:.2px}
-.container{padding:22px}
+.topo h2{
+    margin:0;
+    font-size:30px;
+    letter-spacing:.2px;
+}
+.container{
+    padding:22px;
+}
 .box-mesas{
     background:#fff;
     border-radius:22px;
@@ -125,10 +130,13 @@ body.modal-open{overflow:hidden}
     box-shadow:0 10px 32px rgba(15,23,42,.06);
     border:1px solid #edf0f5;
 }
-.box-mesas h3{margin:0 0 18px 0;font-size:24px}
+.box-mesas h3{
+    margin:0 0 18px 0;
+    font-size:24px;
+}
 .mesas-grid{
     display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(130px,130px));
+    grid-template-columns:repeat(auto-fit, minmax(130px, 130px));
     gap:16px;
     justify-content:flex-start;
 }
@@ -137,7 +145,7 @@ body.modal-open{overflow:hidden}
     height:130px;
     border:none;
     border-radius:24px;
-    background:linear-gradient(145deg,#0f1b3d 0%,#15295c 100%);
+    background:linear-gradient(145deg,#0f1b3d 0%, #15295c 100%);
     color:#fff;
     cursor:pointer;
     font-weight:900;
@@ -149,7 +157,10 @@ body.modal-open{overflow:hidden}
     text-align:center;
     padding:12px;
     transition:all .22s ease;
-    box-shadow:0 14px 28px rgba(15,27,61,.28), inset 0 1px 0 rgba(255,255,255,.10), inset 0 -4px 10px rgba(0,0,0,.18);
+    box-shadow:
+        0 14px 28px rgba(15,27,61,.28),
+        inset 0 1px 0 rgba(255,255,255,.10),
+        inset 0 -4px 10px rgba(0,0,0,.18);
     border:2px solid rgba(255,255,255,.08);
     position:relative;
     overflow:hidden;
@@ -158,18 +169,27 @@ body.modal-open{overflow:hidden}
     content:"";
     position:absolute;
     inset:0;
-    background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0));
+    background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0));
     pointer-events:none;
 }
 .btn-mesa:hover{
     transform:translateY(-4px) scale(1.02);
-    box-shadow:0 18px 34px rgba(15,27,61,.34), inset 0 1px 0 rgba(255,255,255,.12), inset 0 -4px 10px rgba(0,0,0,.20);
+    box-shadow:
+        0 18px 34px rgba(15,27,61,.34),
+        inset 0 1px 0 rgba(255,255,255,.12),
+        inset 0 -4px 10px rgba(0,0,0,.20);
 }
-.btn-mesa:active{transform:translateY(-1px) scale(.99)}
+.btn-mesa:active{
+    transform:translateY(-1px) scale(.99);
+}
 .btn-mesa.com-busca{
-    background:linear-gradient(145deg,#a04535 0%,#c5563d 100%);
-    box-shadow:0 14px 28px rgba(160,69,53,.30), inset 0 1px 0 rgba(255,255,255,.12), inset 0 -4px 10px rgba(0,0,0,.16);
+    background:linear-gradient(145deg,#a04535 0%, #c5563d 100%);
+    box-shadow:
+        0 14px 28px rgba(160,69,53,.30),
+        inset 0 1px 0 rgba(255,255,255,.12),
+        inset 0 -4px 10px rgba(0,0,0,.16);
 }
+
 .modal{
     position:fixed;
     inset:0;
@@ -182,7 +202,9 @@ body.modal-open{overflow:hidden}
     box-sizing:border-box;
     overflow:auto;
 }
-.modal.ativo{display:flex}
+.modal.ativo{
+    display:flex;
+}
 .modal-card{
     width:100%;
     max-width:980px;
@@ -200,7 +222,10 @@ body.modal-open{overflow:hidden}
     gap:12px;
     margin-bottom:18px;
 }
-.modal-topo h3{margin:0;font-size:30px}
+.modal-topo h3{
+    margin:0;
+    font-size:30px;
+}
 .btn-fechar{
     border:none;
     background:#0f172a;
@@ -235,8 +260,12 @@ body.modal-open{overflow:hidden}
     color:#fff;
     font-size:15px;
 }
-.btn-localizar{background:linear-gradient(90deg,#ee4d2d 0%,#ff6a3d 100%)}
-.btn-limpar-mesa{background:#64748b}
+.btn-localizar{
+    background:linear-gradient(90deg,#ee4d2d 0%,#ff6a3d 100%);
+}
+.btn-limpar-mesa{
+    background:#64748b;
+}
 .resultado-mesa{
     border:1px solid #e5e7eb;
     border-radius:22px;
@@ -247,9 +276,22 @@ body.modal-open{overflow:hidden}
     border:2px solid #f59e0b;
     box-shadow:0 0 0 4px rgba(245,158,11,0.10);
 }
-.resultado-mesa .titulo{font-size:15px;color:#6b7280;margin-bottom:4px}
-.nome{font-size:22px;font-weight:900;margin:6px 0 12px 0;color:#111827}
-.linha{margin-bottom:8px;color:#374151;font-size:15px}
+.resultado-mesa .titulo{
+    font-size:15px;
+    color:#6b7280;
+    margin-bottom:4px;
+}
+.nome{
+    font-size:22px;
+    font-weight:900;
+    margin:6px 0 12px 0;
+    color:#111827;
+}
+.linha{
+    margin-bottom:8px;
+    color:#374151;
+    font-size:15px;
+}
 .pacote-destaque{
     margin-top:14px;
     background:linear-gradient(90deg,#fff4ef 0%,#fff 100%);
@@ -274,8 +316,14 @@ body.modal-open{overflow:hidden}
     letter-spacing:.8px;
     color:#0f172a;
 }
-.info-rota-normal{margin-top:16px}
-.info-rota-normal h4{margin:0 0 12px 0;font-size:18px;color:#111827}
+.info-rota-normal{
+    margin-top:16px;
+}
+.info-rota-normal h4{
+    margin:0 0 12px 0;
+    font-size:18px;
+    color:#111827;
+}
 .moto-box{
     margin-top:16px;
     padding:16px;
@@ -283,8 +331,17 @@ body.modal-open{overflow:hidden}
     background:#fff4ef;
     border:1px solid #ffd5c7;
 }
-.moto-titulo{font-weight:900;color:#7c2d12;margin-bottom:12px;font-size:18px}
-.moto-lista{display:flex;flex-direction:column;gap:10px}
+.moto-titulo{
+    font-weight:900;
+    color:#7c2d12;
+    margin-bottom:12px;
+    font-size:18px;
+}
+.moto-lista{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
 .moto-item{
     background:#fff;
     border:1px solid #ffd5c7;
@@ -294,8 +351,14 @@ body.modal-open{overflow:hidden}
     color:#111827;
     font-size:19px;
 }
-.moto-item .numero{font-size:30px;color:#111827}
-.moto-item .cluster{font-size:24px;color:#7c2d12}
+.moto-item .numero{
+    font-size:30px;
+    color:#111827;
+}
+.moto-item .cluster{
+    font-size:24px;
+    color:#7c2d12;
+}
 .moto-total{
     margin-top:12px;
     background:#fff;
@@ -314,8 +377,16 @@ body.modal-open{overflow:hidden}
     border-radius:18px;
     padding:16px;
 }
-.bloco-companheiros h4{margin:0 0 12px 0;font-size:20px;color:#111827}
-.lista-companheiros{display:flex;flex-direction:column;gap:10px}
+.bloco-companheiros h4{
+    margin:0 0 12px 0;
+    font-size:20px;
+    color:#111827;
+}
+.lista-companheiros{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
 .item-companheiro{
     display:flex;
     align-items:center;
@@ -326,13 +397,20 @@ body.modal-open{overflow:hidden}
     border:1px solid #e5e7eb;
     background:#fff;
 }
-.item-companheiro.finalizado{background:#eef2f7;color:#64748b}
+.item-companheiro.finalizado{
+    background:#eef2f7;
+    color:#64748b;
+}
 .item-companheiro.pendente{
     background:#f0fdf4;
     border-color:#86efac;
     box-shadow:0 0 0 3px rgba(34,197,94,.12);
 }
-.item-companheiro .esq{display:flex;align-items:center;gap:12px}
+.item-companheiro .esq{
+    display:flex;
+    align-items:center;
+    gap:12px;
+}
 .luz{
     width:16px;
     height:16px;
@@ -341,10 +419,16 @@ body.modal-open{overflow:hidden}
 }
 .luz.acesa{
     background:#22c55e;
-    box-shadow:0 0 12px rgba(34,197,94,.9),0 0 24px rgba(34,197,94,.45);
+    box-shadow:0 0 12px rgba(34,197,94,.9), 0 0 24px rgba(34,197,94,.45);
 }
-.luz.apagada{background:#9ca3af}
-.nome-companheiro{font-weight:900;font-size:17px;color:#111827}
+.luz.apagada{
+    background:#9ca3af;
+}
+.nome-companheiro{
+    font-weight:900;
+    font-size:17px;
+    color:#111827;
+}
 .item-companheiro.finalizado .nome-companheiro{
     color:#6b7280;
     text-decoration:line-through;
@@ -356,8 +440,14 @@ body.modal-open{overflow:hidden}
     font-size:13px;
     white-space:nowrap;
 }
-.status-chip.pendente{background:#dcfce7;color:#166534}
-.status-chip.finalizado{background:#e5e7eb;color:#4b5563}
+.status-chip.pendente{
+    background:#dcfce7;
+    color:#166534;
+}
+.status-chip.finalizado{
+    background:#e5e7eb;
+    color:#4b5563;
+}
 .acoes-mesa{
     display:flex;
     gap:10px;
@@ -373,9 +463,16 @@ body.modal-open{overflow:hidden}
     font-weight:900;
     font-size:16px;
 }
-.btn-acao-conferindo{background:#f59e0b}
-.btn-acao-finalizado{background:#64748b}
-.btn-acao-mesa:disabled{opacity:.7;cursor:not-allowed}
+.btn-acao-conferindo{
+    background:#f59e0b;
+}
+.btn-acao-finalizado{
+    background:#64748b;
+}
+.btn-acao-mesa:disabled{
+    opacity:.7;
+    cursor:not-allowed;
+}
 .status-finalizado-msg{
     margin-top:16px;
     padding:14px 16px;
@@ -411,7 +508,12 @@ body.modal-open{overflow:hidden}
     font-weight:900;
     font-size:16px;
 }
-.msg-vazia{color:#6b7280;font-size:16px;text-align:center;padding:26px 10px}
+.msg-vazia{
+    color:#6b7280;
+    font-size:16px;
+    text-align:center;
+    padding:26px 10px;
+}
 .loading-overlay{
     position:fixed;
     inset:0;
@@ -422,7 +524,10 @@ body.modal-open{overflow:hidden}
     z-index:10000;
     transition:opacity .2s ease;
 }
-.loading-overlay.hidden{opacity:0;pointer-events:none}
+.loading-overlay.hidden{
+    opacity:0;
+    pointer-events:none;
+}
 .loading-box{
     background:#fff;
     border:1px solid #eee;
@@ -443,7 +548,11 @@ body.modal-open{overflow:hidden}
     border-radius:50%;
     animation:spin 1s linear infinite;
 }
-.loading-text{font-size:16px;font-weight:900;color:#111827}
+.loading-text{
+    font-size:16px;
+    font-weight:900;
+    color:#111827;
+}
 .cronometro-box{
     margin-top:16px;
     background:#0f172a;
@@ -452,19 +561,37 @@ body.modal-open{overflow:hidden}
     padding:16px;
     box-shadow:0 10px 24px rgba(15,23,42,.18);
 }
-.cronometro-label{font-size:13px;opacity:.8;margin-bottom:8px;font-weight:700}
-.cronometro-tempo{font-size:34px;font-weight:900;letter-spacing:1px}
-.cronometro-rota{margin-top:6px;font-size:14px;opacity:.9}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media (max-width:700px){
-    .topo{padding:18px 15px}
-    .container{padding:15px}
-    .modal-card{padding:16px}
-    .modal-topo h3{font-size:22px}
-    .rota-super-destaque{font-size:26px}
-    .item-companheiro{flex-direction:column;align-items:flex-start}
+.cronometro-label{
+    font-size:13px;
+    opacity:.8;
+    margin-bottom:8px;
+    font-weight:700;
+}
+.cronometro-tempo{
+    font-size:34px;
+    font-weight:900;
+    letter-spacing:1px;
+}
+.cronometro-rota{
+    margin-top:6px;
+    font-size:14px;
+    opacity:.9;
+}
+@keyframes spin{
+    to{ transform:rotate(360deg); }
+}
+@media (max-width: 700px){
+    .topo{ padding:18px 15px; }
+    .container{ padding:15px; }
+    .modal-card{ padding:16px; }
+    .modal-topo h3{ font-size:22px; }
+    .rota-super-destaque{ font-size:26px; }
+    .item-companheiro{
+        flex-direction:column;
+        align-items:flex-start;
+    }
     .mesas-grid{
-        grid-template-columns:repeat(auto-fit,minmax(110px,110px));
+        grid-template-columns:repeat(auto-fit, minmax(110px, 110px));
         gap:12px;
     }
     .btn-mesa{
@@ -548,23 +675,6 @@ let cronometroInterval = null;
 let cronometroInicio = null;
 let cronometroRotaAtual = "";
 
-function salvarMesaAbertaRealtime() {
-    if (mesaAtual) {
-        sessionStorage.setItem("mesa_aberta_realtime", String(mesaAtual));
-    } else {
-        sessionStorage.removeItem("mesa_aberta_realtime");
-    }
-}
-
-function restaurarMesaAbertaRealtime() {
-    const mesaSalva = sessionStorage.getItem("mesa_aberta_realtime");
-    if (mesaSalva) {
-        setTimeout(() => {
-            abrirMesa(mesaSalva);
-        }, 500);
-    }
-}
-
 function mostrarLoading(texto = "Carregando painel..."){
     const textoEl = loadingOverlay.querySelector(".loading-text");
     if (textoEl) textoEl.textContent = texto;
@@ -577,7 +687,6 @@ function esconderLoading(){
 
 window.addEventListener("load", function(){
     setTimeout(() => esconderLoading(), 250);
-    restaurarMesaAbertaRealtime();
 });
 
 function chaveMesa(mesa){
@@ -598,8 +707,6 @@ function atualizarBotoesMesas(){
 
 function abrirMesa(mesa){
     mesaAtual = mesa;
-    salvarMesaAbertaRealtime();
-
     tituloMesa.textContent = "Mesa " + mesa;
     modal.classList.add("ativo");
     document.body.classList.add("modal-open");
@@ -616,7 +723,6 @@ function fecharMesa(){
     modal.classList.remove("ativo");
     document.body.classList.remove("modal-open");
     mesaAtual = null;
-    salvarMesaAbertaRealtime();
 }
 
 function salvarMesa(valor){
@@ -800,7 +906,6 @@ async function renderResultadoMesa(idBuscado){
     const id = (idBuscado || "").trim();
 
     if (!id) {
-        resultadoMesa.classList.remove("destacado-conferindo");
         resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>';
         return;
     }
@@ -808,7 +913,6 @@ async function renderResultadoMesa(idBuscado){
     const motorista = DRIVERS[id];
 
     if (!motorista) {
-        resultadoMesa.classList.remove("destacado-conferindo");
         resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista encontrado para o ID informado.</div>';
         return;
     }
@@ -897,12 +1001,6 @@ async function renderResultadoMesa(idBuscado){
         ${htmlConflito}
         ${htmlAcoes}
     `;
-
-    if ((motorista.status || "").toLowerCase() === "conferindo") {
-        resultadoMesa.classList.add("destacado-conferindo");
-    } else {
-        resultadoMesa.classList.remove("destacado-conferindo");
-    }
 }
 
 async function alterarStatusMesa(driverId, novoStatus){
@@ -933,6 +1031,32 @@ async function alterarStatusMesa(driverId, novoStatus){
                 botoes.forEach(btn => btn.disabled = false);
                 return;
             }
+
+            const formTempo = new FormData();
+            formTempo.append("action", "start");
+            formTempo.append("mesa", mesaAtual);
+            formTempo.append("driver_ref", motorista.id);
+            formTempo.append("driver_id", motorista.driver_id);
+            formTempo.append("driver_name", motorista.driver_name);
+            formTempo.append("rota_texto", motorista.cluster_text);
+            formTempo.append("vehicle_type", motorista.vehicle_type);
+
+            const respTempo = await fetch("tempo_mesa.php", {
+                method: "POST",
+                body: formTempo
+            });
+
+            const txtTempo = await respTempo.text();
+            const jsonTempo = JSON.parse(txtTempo);
+
+            if (!jsonTempo.ok) {
+                alert(jsonTempo.erro || "Erro ao iniciar cronômetro.");
+                botoes.forEach(btn => btn.disabled = false);
+                return;
+            }
+
+            iniciarCronometroVisual(jsonTempo.started_at, motorista.cluster_text);
+
         } catch (e) {
             alert("Erro ao verificar conflito da mesa: " + e.message);
             botoes.forEach(btn => btn.disabled = false);
@@ -965,51 +1089,6 @@ async function alterarStatusMesa(driverId, novoStatus){
             return;
         }
 
-        if (novoStatus === "conferindo") {
-            const formTempo = new FormData();
-            formTempo.append("action", "start");
-            formTempo.append("mesa", String(mesaAtual));
-            formTempo.append("driver_ref", String(motorista.id));
-            formTempo.append("driver_id", String(motorista.driver_id));
-            formTempo.append("driver_name", String(motorista.driver_name));
-            formTempo.append("rota_texto", String(motorista.cluster_text));
-            formTempo.append("vehicle_type", String(motorista.vehicle_type));
-
-            const tempoResp = await fetch("tempo_mesa.php", {
-                method: "POST",
-                body: formTempo
-            });
-
-            const tempoTexto = await tempoResp.text();
-            const tempoJson = JSON.parse(tempoTexto);
-
-            if (!tempoJson.ok) {
-                throw new Error(tempoJson.erro || "Erro ao iniciar cronômetro.");
-            }
-
-            iniciarCronometroVisual(tempoJson.started_at, motorista.cluster_text);
-        }
-
-        if (novoStatus === "finalizado") {
-            const formTempoFim = new FormData();
-            formTempoFim.append("action", "finish");
-            formTempoFim.append("mesa", String(mesaAtual));
-
-            const tempoFimResp = await fetch("tempo_mesa.php", {
-                method: "POST",
-                body: formTempoFim
-            });
-
-            const tempoFimTexto = await tempoFimResp.text();
-            const tempoFimJson = JSON.parse(tempoFimTexto);
-
-            if (!tempoFimJson.ok) {
-                throw new Error(tempoFimJson.erro || "Erro ao finalizar cronômetro.");
-            }
-
-            pararCronometroVisual();
-        }
-
         DRIVERS[driverId].status = novoStatus;
 
         await renderResultadoMesa(driverId);
@@ -1024,16 +1103,38 @@ async function alterarStatusMesa(driverId, novoStatus){
 
         if (novoStatus === "finalizado") {
             resultadoMesa.classList.remove("destacado-conferindo");
+
+            try {
+                const formTempoFim = new FormData();
+                formTempoFim.append("action", "finish");
+                formTempoFim.append("mesa", mesaAtual);
+                formTempoFim.append("rota_texto", motorista.cluster_text);
+
+                const respFim = await fetch("tempo_mesa.php", {
+                    method: "POST",
+                    body: formTempoFim
+                });
+
+                const txtFim = await respFim.text();
+                const jsonFim = JSON.parse(txtFim);
+
+                if (jsonFim.ok) {
+                    pararCronometroVisual();
+
+                    const feedbackTempo = document.createElement("div");
+                    feedbackTempo.className = "feedback-status finalizado";
+                    feedbackTempo.textContent = `Rota finalizada com sucesso. Tempo: ${formatarDuracao(jsonFim.duration_seconds)}`;
+                    resultadoMesa.appendChild(feedbackTempo);
+                }
+            } catch (e) {
+                console.error("Erro ao finalizar cronômetro:", e);
+            }
+
             try {
                 await apiMesa("clear", { mesa: mesaAtual });
             } catch (e) {
                 console.error("Erro ao limpar mesa após finalizar:", e.message);
             }
-
-            const feedback = document.createElement("div");
-            feedback.className = "feedback-status finalizado";
-            feedback.textContent = "Rota finalizada com sucesso.";
-            resultadoMesa.appendChild(feedback);
         }
 
     } catch (e) {
@@ -1085,9 +1186,9 @@ btnLimparMesa.addEventListener("click", async function(){
             console.error("Erro ao limpar mesa:", e.message);
         }
     }
+    pararCronometroVisual();
     resultadoMesa.classList.remove("destacado-conferindo");
     resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>';
-    pararCronometroVisual();
 });
 
 inputMesa.addEventListener("keydown", async function(e){
@@ -1121,36 +1222,6 @@ document.addEventListener("keydown", function(e){
 });
 
 atualizarBotoesMesas();
-</script>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-const CONFERENTE_SUPABASE_URL = "https://uyqnkvegjqsnejlrgetc.supabase.co";
-const CONFERENTE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5cW5rdmVnanFzbmVqbHJnZXRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODA3NjgsImV4cCI6MjA4OTI1Njc2OH0.f7ytVVrtdiNK4ROQ-Epxt9o0Pda1YiNF2V2sXhRjaE8";
-const conferenteSupabase = window.supabase.createClient(CONFERENTE_SUPABASE_URL, CONFERENTE_SUPABASE_ANON_KEY);
-
-let conferenteReloadTimer = null;
-
-function recarregarConferenteRealtime() {
-    if (conferenteReloadTimer) return;
-
-    if (mesaAtual) {
-        sessionStorage.setItem("mesa_aberta_realtime", String(mesaAtual));
-    }
-
-    conferenteReloadTimer = setTimeout(() => {
-        window.location.reload();
-    }, 400);
-}
-
-conferenteSupabase
-    .channel("conferente-realtime-geral")
-    .on("postgres_changes", { event: "*", schema: "public", table: "drivers" }, () => recarregarConferenteRealtime())
-    .on("postgres_changes", { event: "*", schema: "public", table: "mesa_tempos" }, () => recarregarConferenteRealtime())
-    .on("postgres_changes", { event: "*", schema: "public", table: "mesa_controle" }, () => recarregarConferenteRealtime())
-    .subscribe((status) => {
-        console.log("Canal realtime conferente:", status);
-    });
 </script>
 
 </body>
