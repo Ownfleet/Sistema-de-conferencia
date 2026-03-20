@@ -418,10 +418,28 @@ tbody td{
     padding:10px 12px;
     line-height:1.45;
 }
+.import-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr auto;
+    gap:14px;
+    width:100%;
+    align-items:end;
+}
+.input-group{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+}
+.input-group label{
+    font-size:14px;
+    font-weight:800;
+    color:var(--text);
+}
 @media (max-width:980px){
     .container{padding:16px}
     .topo{padding:18px 16px;flex-direction:column;align-items:flex-start}
     .kpis,.kpis-4{grid-template-columns:repeat(2,minmax(140px,1fr))}
+    .import-grid{grid-template-columns:1fr}
 }
 @media (max-width:640px){
     .kpis,.kpis-4{grid-template-columns:1fr}
@@ -461,17 +479,26 @@ tbody td{
     <div class="card">
         <div class="bloco-info">
             <h3>Importar Rotas</h3>
-            <p>Use os arquivos corretos para atualizar a escala do dia.</p>
+            <p>Selecione os dois arquivos e envie tudo de uma vez.</p>
         </div>
+
         <div class="form-area">
-            <form action="importar_normal.php" method="post" enctype="multipart/form-data" class="form-linha">
-                <input type="file" name="arquivo" required>
-                <button class="btn btn-brand" type="submit">Importar Normal</button>
+            <form action="importar_escala.php" method="post" enctype="multipart/form-data" class="form-linha">
+                <div class="import-grid">
+                    <div class="input-group">
+                        <label for="arquivo_normal">Arquivo Normal</label>
+                        <input type="file" name="arquivo_normal" id="arquivo_normal" accept=".csv" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="arquivo_moto">Arquivo Moto</label>
+                        <input type="file" name="arquivo_moto" id="arquivo_moto" accept=".csv" required>
+                    </div>
+
+                    <button class="btn btn-brand" type="submit">Importar Escala Completa</button>
+                </div>
             </form>
-            <form action="importar_moto.php" method="post" enctype="multipart/form-data" class="form-linha">
-                <input type="file" name="arquivo" required>
-                <button class="btn btn-brand" type="submit">Importar Moto</button>
-            </form>
+
             <form action="limpar_escala.php" method="post" onsubmit="return confirm('Tem certeza que deseja limpar a escala atual?');" class="form-linha">
                 <button class="btn btn-sec" type="submit">Limpar Escala</button>
             </form>
