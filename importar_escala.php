@@ -141,10 +141,10 @@ try {
 
     // cria um único import ativo
     $stmtImport = $pdo->prepare("
-        INSERT INTO imports (import_type, imported_by, is_active, created_at)
-        VALUES ('escala_completa', ?, true, NOW())
-        RETURNING id
-    ");
+    INSERT INTO imports (import_type, imported_by, is_active, created_at)
+    VALUES ('normal', ?, true, NOW())
+    RETURNING id
+");
     $stmtImport->execute([$_SESSION["user"]["email"] ?? "admin"]);
     $importId = $stmtImport->fetchColumn();
 
