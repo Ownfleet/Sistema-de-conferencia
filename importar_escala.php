@@ -229,51 +229,56 @@ try {
     }
 
     /* =========================
-       IMPORTAÇÃO MOTO
-    ========================= */
-    $headerMoto = fgetcsv($handleMoto, 0, ",");
-    if ($headerMoto === false) {
-        throw new Exception("Arquivo moto vazio.");
+   IMPORTAÇÃO MOTO
+========================= */
+$headerMoto = fgetcsv($handleMoto, 0, ",");
+if ($headerMoto === false) {
+    throw new Exception("Arquivo moto vazio.");
+}
+
+$mapaMoto = mapearCabecalhos($headerMoto);
+
+while (($linha = fgetcsv($handleMoto, 0, ",")) !== false) {
+    $driverId = pegarValor($linha, $mapaMoto, ["id", "driver_id", "id_motorista"]);
+    $driverName = pegarValor($linha, $mapaMoto, ["nome", "nome_do_motorista", "driver_name", "nome_motorista"]);
+    $clusterBruto = pegarValor($linha, $mapaMoto, ["cluster"]);
+    $motoFormula = pegarValor($linha, $mapaMoto, ["contem_formula", "moto_formula", "formula_moto"], "");
+    $vehicleType = "MOTO";
+
+    if ($driverId === "" || $driverName === "" || $clusterBruto === "") {
+        continue;
     }
 
-    $mapaMoto = mapearCabecalhos($headerMoto);
+    // Ex.: D-3/116
+    $parsedMotoCluster = parseClusterNormal($clusterBruto);
 
-    while (($linha = fgetcsv($handleMoto, 0, ",")) !== false) {
-        $driverId = pegarValor($linha, $mapaMoto, ["driver_id", "id_motorista", "id"]);
-        $driverName = pegarValor($linha, $mapaMoto, ["driver_name", "nome_do_motorista", "nome_motorista", "motorista", "nome"]);
-        $clusterText = pegarValor($linha, $mapaMoto, ["cluster_text", "texto_do_aglomerado", "cluster", "rota"]);
-        $packagesTotal = (int)pegarValor($linha, $mapaMoto, ["packages_total", "pacotes_total", "pacotes"], "0");
-        $vehicleType = pegarValor($linha, $mapaMoto, ["vehicle_type", "tipo_de_veiculo", "tipo_veiculo", "veiculo"], "MOTO");
-        $motoFormula = pegarValor($linha, $mapaMoto, ["moto_formula", "formula_moto"], "");
+    $clusterText = $parsedMotoCluster["cluster_text"];
+    $packagesTotal = (int)$parsedMotoCluster["packages_total"];
 
-        if ($driverId === "" || $driverName === "" || $clusterText === "") {
-            continue;
-        }
+    $stmtDriver->execute([
+        $importId,
+        $driverId,
+        $driverName,
+        $clusterText,
+        $packagesTotal,
+        $vehicleType,
+        $motoFormula !== "" ? $motoFormula : null
+    ]);
 
-        $stmtDriver->execute([
-            $importId,
-            $driverId,
-            $driverName,
-            $clusterText,
-            $packagesTotal,
-            $vehicleType,
-            $motoFormula !== "" ? $motoFormula : null
+    $driverRef = $stmtDriver->fetchColumn();
+
+    $clustersMoto = parseMotoFormula($motoFormula);
+    $ordem = 1;
+
+    foreach ($clustersMoto as $clusterItem) {
+        $stmtCluster->execute([
+            $driverRef,
+            $clusterItem["cluster_code"],
+            $clusterItem["packages"],
+            $ordem++
         ]);
-
-        $driverRef = $stmtDriver->fetchColumn();
-
-        $clustersMoto = parseMotoFormula($motoFormula);
-        $ordem = 1;
-
-        foreach ($clustersMoto as $clusterItem) {
-            $stmtCluster->execute([
-                $driverRef,
-                $clusterItem["cluster_code"],
-                $clusterItem["packages"],
-                $ordem++
-            ]);
-        }
     }
+}
 
     fclose($handleNormal);
     fclose($handleMoto);
