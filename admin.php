@@ -9,14 +9,317 @@ if (!isset($_SESSION["user"])) {
     exit;
 }
 
-if ($_SESSION["user"]["role"] !== "admin") {
+if (($_SESSION["user"]["role"] ?? "") !== "admin") {
     die("Acesso negado");
+}
+
+function filtroAtivo($valorAtual, $valorFiltro) {
+    return $valorAtual === $valorFiltro ? "filtro-ativo" : "";
+}
+
+function formatarDuracao($segundos) {
+    $segundos = (int)$segundos;
+    if ($segundos <= 0) return "00:00:00";
+
+    $h = floor($segundos / 3600);
+    $m = floor(($segundos % 3600) / 60);
+    $s = $segundos % 60;
+
+    return str_pad((string)$h, 2, "0", STR_PAD_LEFT) . ":" .
+           str_pad((string)$m, 2, "0", STR_PAD_LEFT) . ":" .
+           str_pad((string)$s, 2, "0", STR_PAD_LEFT);
+}
+
+function formatarMinutosPorRota($segundos) {
+    $segundos = (int)$segundos;
+    if ($segundos <= 0) return "0 min";
+
+    $min = floor($segundos / 60);
+    $sec = $segundos % 60;
+
+    if ($min <= 0) {
+        return $sec . " seg";
+    }
+
+    return $min . " min " . str_pad((string)$sec, 2, "0", STR_PAD_LEFT) . " seg";
+}
+
+function parseClusterNormal(string $value): array {
+    $value = trim($value);
+
+    if ($value === "") {
+        return [
+            "cluster_text" => "",
+            "packages_total" => 0,
+            "clusters" => []
+        ];
+    }
+
+    $clusterPart = $value;
+    $packages = 0;
+
+    if (strpos($value, "/") !== false) {
+        [$clusterPart, $packagesPart] = explode("/", $value, 2);
+        $packages = (int)preg_replace("/\D/", "", $packagesPart);
+    }
+
+    $clusters = array_values(array_filter(array_map("trim", explode("+", $clusterPart))));
+
+    return [
+        "cluster_text" => trim($clusterPart),
+        "packages_total" => $packages,
+        "clusters" => $clusters
+    ];
+}
+
+function distribuirPacotesNormal(array $clusters, int $packagesTotal): array {
+    $resultado = [];
+    $qtd = count($clusters);
+
+    if ($qtd <= 0) return $resultado;
+
+    $base = $packagesTotal > 0 ? (int)floor($packagesTotal / $qtd) : 0;
+    $resto = $packagesTotal > 0 ? $packagesTotal - ($base * $qtd) : 0;
+
+    foreach ($clusters as $cluster) {
+        $pacotes = $base;
+        if ($resto > 0) {
+            $pacotes++;
+            $resto--;
+        }
+
+        $resultado[] = [
+            "cluster_code" => $cluster,
+            "packages" => $pacotes
+        ];
+    }
+
+    return $resultado;
+}
+
+function parseMotoFormula(string $formula): array {
+    $formula = trim($formula);
+    $resultado = [];
+
+    if ($formula === "") return $resultado;
+
+    preg_match_all('/([A-Z]-\d+)\((\d+)\)/i', $formula, $matches, PREG_SET_ORDER);
+
+    foreach ($matches as $m) {
+        $resultado[] = [
+            "cluster_code" => trim((string)$m[1]),
+            "packages" => (int)$m[2]
+        ];
+    }
+
+    return $resultado;
+}
+
+function somarPacotesMoto(array $clustersMoto): int {
+    $total = 0;
+    foreach ($clustersMoto as $item) {
+        $total += (int)($item["packages"] ?? 0);
+    }
+    return $total;
+}
+
+function getOrCreateActiveImportId(PDO $pdo, string $tipo, string $email): int {
+    $stmt = $pdo->query("SELECT id FROM imports WHERE is_active = true ORDER BY id DESC LIMIT 1");
+    $id = $stmt->fetchColumn();
+
+    if ($id) {
+        return (int)$id;
+    }
+
+    $tipoPermitido = strtoupper($tipo) === "MOTO" ? "moto" : "normal";
+
+    $stmtNovo = $pdo->prepare("
+        INSERT INTO imports (import_type, imported_by, is_active, created_at)
+        VALUES (?, ?, true, NOW())
+        RETURNING id
+    ");
+    $stmtNovo->execute([$tipoPermitido, $email]);
+    return (int)$stmtNovo->fetchColumn();
+}
+
+$flashSuccess = $_SESSION["flash_success"] ?? "";
+$flashError = $_SESSION["flash_error"] ?? "";
+unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "create_route") {
+    $driverId = trim((string)($_POST["driver_id_manual"] ?? ""));
+    $driverName = trim((string)($_POST["driver_name_manual"] ?? ""));
+    $vehicleType = strtoupper(trim((string)($_POST["vehicle_type_manual"] ?? "")));
+
+    $rotaNormal = trim((string)($_POST["cluster_normal_manual"] ?? ""));
+    $rotaMoto = trim((string)($_POST["cluster_moto_manual"] ?? ""));
+    $formulaMoto = trim((string)($_POST["moto_formula_manual"] ?? ""));
+
+    try {
+        if ($driverId === "" || $driverName === "" || $vehicleType === "") {
+            throw new Exception("Preencha ID, nome e veículo.");
+        }
+
+        $veiculosNormais = ["FIORINO", "PASSEIO", "ZOF-FIORINO-AR", "ZOF-PASSEIO-AR"];
+
+        $pdo->beginTransaction();
+
+        $importId = getOrCreateActiveImportId($pdo, $vehicleType, $_SESSION["user"]["email"] ?? "admin");
+
+        $clusterText = "";
+        $packagesTotal = 0;
+        $motoFormula = null;
+        $clustersParaSalvar = [];
+
+        if ($vehicleType === "MOTO") {
+            if ($rotaMoto === "" || $formulaMoto === "") {
+                throw new Exception("Para MOTO, preencha rota exibida e fórmula moto.");
+            }
+
+            $clustersMoto = parseMotoFormula($formulaMoto);
+            if (count($clustersMoto) === 0) {
+                throw new Exception("A fórmula da moto está inválida. Exemplo: D-3(60)+D-4(55)");
+            }
+
+            $clusterText = $rotaMoto;
+            $packagesTotal = somarPacotesMoto($clustersMoto);
+            $motoFormula = $formulaMoto;
+            $clustersParaSalvar = $clustersMoto;
+
+        } else {
+            if (!in_array($vehicleType, $veiculosNormais, true)) {
+                throw new Exception("Veículo inválido para criação manual.");
+            }
+
+            if ($rotaNormal === "") {
+                throw new Exception("Preencha a rota no padrão A-1+B-2/120.");
+            }
+
+            $parsed = parseClusterNormal($rotaNormal);
+
+            if ($parsed["cluster_text"] === "") {
+                throw new Exception("A rota normal está vazia.");
+            }
+
+            $clusterText = $parsed["cluster_text"];
+            $packagesTotal = (int)$parsed["packages_total"];
+            $clustersParaSalvar = distribuirPacotesNormal($parsed["clusters"], $packagesTotal);
+        }
+
+        $stmtExiste = $pdo->prepare("
+            SELECT id
+            FROM drivers
+            WHERE active = true AND driver_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmtExiste->execute([$driverId]);
+        $driverExistenteId = $stmtExiste->fetchColumn();
+
+        if ($driverExistenteId) {
+            $driverExistenteId = (int)$driverExistenteId;
+
+            $stmtDeleteClusters = $pdo->prepare("DELETE FROM driver_clusters WHERE driver_ref = ?");
+            $stmtDeleteClusters->execute([$driverExistenteId]);
+
+            $stmtUpdateDriver = $pdo->prepare("
+                UPDATE drivers
+                SET
+                    import_id = ?,
+                    driver_name = ?,
+                    cluster_text = ?,
+                    packages_total = ?,
+                    vehicle_type = ?,
+                    status = 'ativo',
+                    moto_formula = ?,
+                    active = true
+                WHERE id = ?
+            ");
+            $stmtUpdateDriver->execute([
+                $importId,
+                $driverName,
+                $clusterText,
+                $packagesTotal,
+                $vehicleType,
+                $motoFormula,
+                $driverExistenteId
+            ]);
+
+            $driverRef = $driverExistenteId;
+        } else {
+            $stmtInsertDriver = $pdo->prepare("
+                INSERT INTO drivers
+                (
+                    import_id,
+                    driver_id,
+                    driver_name,
+                    cluster_text,
+                    packages_total,
+                    vehicle_type,
+                    status,
+                    active,
+                    moto_formula
+                )
+                VALUES
+                (
+                    ?, ?, ?, ?, ?, ?, 'ativo', true, ?
+                )
+                RETURNING id
+            ");
+            $stmtInsertDriver->execute([
+                $importId,
+                $driverId,
+                $driverName,
+                $clusterText,
+                $packagesTotal,
+                $vehicleType,
+                $motoFormula
+            ]);
+
+            $driverRef = (int)$stmtInsertDriver->fetchColumn();
+        }
+
+        $stmtCluster = $pdo->prepare("
+            INSERT INTO driver_clusters (driver_ref, cluster_code, packages, sort_order)
+            VALUES (?, ?, ?, ?)
+        ");
+
+        $ordem = 1;
+        foreach ($clustersParaSalvar as $clusterItem) {
+            $clusterCode = trim((string)($clusterItem["cluster_code"] ?? ""));
+            $packages = (int)($clusterItem["packages"] ?? 0);
+
+            if ($clusterCode === "") continue;
+
+            $stmtCluster->execute([
+                $driverRef,
+                $clusterCode,
+                $packages,
+                $ordem++
+            ]);
+        }
+
+        $pdo->commit();
+
+        $_SESSION["flash_success"] = "Rota criada/atualizada com sucesso para o motorista {$driverName}.";
+        header("Location: admin.php");
+        exit;
+
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        $_SESSION["flash_error"] = "Erro ao criar rota manual: " . $e->getMessage();
+        header("Location: admin.php");
+        exit;
+    }
 }
 
 $filtroStatus = strtolower(trim($_GET["status"] ?? "todos"));
 
 $sql = "
-    SELECT * 
+    SELECT *
     FROM drivers
     WHERE active = true
 ";
@@ -35,7 +338,7 @@ $stmt->execute($params);
 $drivers = $stmt->fetchAll();
 
 $stmtResumo = $pdo->query("
-    SELECT 
+    SELECT
         COUNT(*) AS total,
         SUM(CASE WHEN LOWER(status) = 'ativo' THEN 1 ELSE 0 END) AS ativos,
         SUM(CASE WHEN LOWER(status) = 'conferindo' THEN 1 ELSE 0 END) AS conferindo,
@@ -127,37 +430,6 @@ foreach ($temposRows as $row) {
 
 ksort($relatorioMesas);
 
-function filtroAtivo($valorAtual, $valorFiltro) {
-    return $valorAtual === $valorFiltro ? "filtro-ativo" : "";
-}
-
-function formatarDuracao($segundos) {
-    $segundos = (int)$segundos;
-    if ($segundos <= 0) return "00:00:00";
-
-    $h = floor($segundos / 3600);
-    $m = floor(($segundos % 3600) / 60);
-    $s = $segundos % 60;
-
-    return str_pad((string)$h, 2, "0", STR_PAD_LEFT) . ":" .
-           str_pad((string)$m, 2, "0", STR_PAD_LEFT) . ":" .
-           str_pad((string)$s, 2, "0", STR_PAD_LEFT);
-}
-
-function formatarMinutosPorRota($segundos) {
-    $segundos = (int)$segundos;
-    if ($segundos <= 0) return "0 min";
-
-    $min = floor($segundos / 60);
-    $sec = $segundos % 60;
-
-    if ($min <= 0) {
-        return $sec . " seg";
-    }
-
-    return $min . " min " . str_pad((string)$sec, 2, "0", STR_PAD_LEFT) . " seg";
-}
-
 $tempoMedioGeral = $totalRotasMesas > 0 ? (int)floor($totalSegundosMesas / $totalRotasMesas) : 0;
 $rotasPorHoraGeral = $totalSegundosMesas > 0 ? round($totalRotasMesas / ($totalSegundosMesas / 3600), 2) : 0;
 
@@ -213,22 +485,30 @@ if (isset($_GET["export"]) && $_GET["export"] === "mesas_csv") {
 <title>Painel Admin</title>
 <style>
 :root{
-    --bg:#f4f7fb;
+    --bg:#f5f7fb;
     --bg-soft:#eef3f9;
     --card:#ffffff;
-    --line:#e7edf5;
-    --text:#172033;
+    --line:#e8edf5;
+    --line-strong:#d8e0eb;
+    --text:#162033;
     --muted:#667085;
     --brand:#ee4d2d;
     --brand-2:#ff6a3d;
+    --brand-dark:#cf3f1f;
     --blue:#2563eb;
     --blue-2:#1d4ed8;
-    --gray:#6b7280;
-    --gray-2:#4b5563;
+    --gray:#667085;
+    --gray-2:#475467;
     --dark:#111827;
     --dark-2:#0b1220;
-    --shadow-sm:0 6px 16px rgba(15,23,42,.06);
-    --radius:18px;
+    --green:#16a34a;
+    --green-bg:#ecfdf3;
+    --amber:#f59e0b;
+    --amber-bg:#fff7ed;
+    --shadow-sm:0 8px 18px rgba(15,23,42,.05);
+    --shadow-md:0 18px 40px rgba(15,23,42,.08);
+    --radius:20px;
+    --radius-sm:14px;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -236,26 +516,111 @@ body{
     margin:0;
     font-family:Arial,sans-serif;
     color:var(--text);
-    background:radial-gradient(circle at top left,#ffffff 0%,var(--bg) 38%,var(--bg-soft) 100%);
+    background:
+        radial-gradient(circle at top left,#ffffff 0%,var(--bg) 38%,var(--bg-soft) 100%);
 }
 .topo{
     position:sticky;
     top:0;
-    z-index:10;
-    background:linear-gradient(90deg,var(--brand) 0%,var(--brand-2) 100%);
+    z-index:20;
+    background:
+        linear-gradient(90deg,var(--brand) 0%,var(--brand-2) 100%);
     color:#fff;
-    padding:20px 28px;
+    padding:18px 28px;
     display:flex;
     justify-content:space-between;
     align-items:center;
     gap:18px;
-    box-shadow:0 10px 30px rgba(238,77,45,.20);
+    box-shadow:0 12px 34px rgba(238,77,45,.22);
 }
-.topo-esq{display:flex;flex-direction:column;gap:4px}
-.topo h2{margin:0;font-size:24px;font-weight:800}
-.topo-sub{font-size:13px;opacity:.9}
-.acoes-topo{display:flex;gap:10px;flex-wrap:wrap}
-.container{max-width:1450px;margin:0 auto;padding:28px}
+.topo-esq{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+}
+.topo h2{
+    margin:0;
+    font-size:29px;
+    font-weight:900;
+    letter-spacing:.2px;
+}
+.topo-sub{
+    font-size:13px;
+    opacity:.92;
+}
+.acoes-topo{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.container{
+    max-width:1500px;
+    margin:0 auto;
+    padding:28px;
+}
+.hero{
+    display:grid;
+    grid-template-columns:1.35fr .95fr;
+    gap:18px;
+    margin-bottom:22px;
+}
+.hero-card{
+    border-radius:26px;
+    padding:26px;
+    color:#fff;
+    position:relative;
+    overflow:hidden;
+    box-shadow:var(--shadow-md);
+}
+.hero-card::after{
+    content:"";
+    position:absolute;
+    inset:auto -80px -80px auto;
+    width:220px;
+    height:220px;
+    background:rgba(255,255,255,.10);
+    border-radius:50%;
+}
+.hero-main{
+    background:linear-gradient(135deg,#ff6a3d 0%, #ee4d2d 45%, #d83b1b 100%);
+}
+.hero-side{
+    background:linear-gradient(135deg,#18233d 0%, #0f172a 100%);
+}
+.hero-title{
+    margin:0 0 8px 0;
+    font-size:30px;
+    font-weight:900;
+}
+.hero-text{
+    margin:0;
+    max-width:760px;
+    line-height:1.55;
+    opacity:.95;
+}
+.hero-mini-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(120px,1fr));
+    gap:14px;
+    margin-top:18px;
+}
+.hero-mini{
+    background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:18px;
+    padding:14px;
+    backdrop-filter:blur(4px);
+}
+.hero-mini-label{
+    font-size:12px;
+    opacity:.9;
+    margin-bottom:6px;
+}
+.hero-mini-value{
+    font-size:26px;
+    font-weight:900;
+}
+
 .card{
     background:linear-gradient(180deg,#ffffff 0%,#fbfcfe 100%);
     border:1px solid var(--line);
@@ -264,16 +629,29 @@ body{
     margin-bottom:22px;
     box-shadow:var(--shadow-sm);
 }
-.card h3{margin:0 0 18px 0;font-size:20px;font-weight:800}
+.card:hover{
+    box-shadow:var(--shadow-md);
+}
+.card h3{
+    margin:0 0 18px 0;
+    font-size:22px;
+    font-weight:900;
+}
 .bloco-info{
     display:flex;
     justify-content:space-between;
-    align-items:center;
-    gap:12px;
+    align-items:flex-start;
+    gap:14px;
     margin-bottom:16px;
     flex-wrap:wrap;
 }
-.bloco-info p{margin:0;color:var(--muted);font-size:14px}
+.bloco-info p{
+    margin:0;
+    color:var(--muted);
+    font-size:14px;
+    max-width:560px;
+    line-height:1.45;
+}
 .btn{
     appearance:none;
     border:none;
@@ -283,30 +661,50 @@ body{
     align-items:center;
     justify-content:center;
     gap:8px;
-    padding:11px 16px;
-    border-radius:12px;
+    padding:12px 16px;
+    border-radius:14px;
     cursor:pointer;
     font-size:14px;
-    font-weight:700;
+    font-weight:800;
     color:#fff;
     transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
     box-shadow:0 8px 18px rgba(0,0,0,.10);
 }
-.btn:hover{transform:translateY(-1px);opacity:.96}
-.btn-brand{background:linear-gradient(135deg,var(--brand) 0%,var(--brand-2) 100%)}
-.btn-sec{background:linear-gradient(135deg,var(--gray) 0%,var(--gray-2) 100%)}
-.btn-edit{background:linear-gradient(135deg,var(--blue) 0%,var(--blue-2) 100%)}
-.btn-sair{background:linear-gradient(135deg,var(--dark) 0%,var(--dark-2) 100%)}
-.form-area{display:grid;gap:14px}
-.form-linha{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    flex-wrap:wrap;
-    padding:14px;
-    border:1px solid var(--line);
-    border-radius:14px;
-    background:#fff;
+.btn:hover{
+    transform:translateY(-1px);
+    opacity:.96;
+}
+.btn-brand{
+    background:linear-gradient(135deg,var(--brand) 0%,var(--brand-2) 100%);
+}
+.btn-sec{
+    background:linear-gradient(135deg,var(--gray) 0%,var(--gray-2) 100%);
+}
+.btn-edit{
+    background:linear-gradient(135deg,var(--blue) 0%,var(--blue-2) 100%);
+}
+.btn-sair{
+    background:linear-gradient(135deg,var(--dark) 0%,var(--dark-2) 100%);
+}
+.btn-ok{
+    background:linear-gradient(135deg,#16a34a 0%, #22c55e 100%);
+}
+.flash{
+    border-radius:16px;
+    padding:14px 16px;
+    margin-bottom:18px;
+    font-weight:800;
+    font-size:14px;
+}
+.flash.success{
+    background:#ecfdf3;
+    color:#166534;
+    border:1px solid #bbf7d0;
+}
+.flash.error{
+    background:#fff1f2;
+    color:#b91c1c;
+    border:1px solid #fecdd3;
 }
 .kpis,.kpis-4{
     display:grid;
@@ -315,17 +713,134 @@ body{
     margin-bottom:18px;
 }
 .kpi{
-    border-radius:16px;
-    padding:16px 18px;
+    border-radius:18px;
+    padding:18px;
     border:1px solid var(--line);
     background:#fff;
     box-shadow:var(--shadow-sm);
 }
-.kpi-label{font-size:13px;color:var(--muted);margin-bottom:8px;font-weight:700}
-.kpi-value{font-size:28px;font-weight:800;color:var(--text)}
+.kpi-label{
+    font-size:13px;
+    color:var(--muted);
+    margin-bottom:8px;
+    font-weight:800;
+}
+.kpi-value{
+    font-size:32px;
+    font-weight:900;
+    color:var(--text);
+}
 .kpi.relatorio{
     background:linear-gradient(180deg,#ffffff 0%,#fff7ed 100%);
     border-color:#fed7aa;
+}
+.form-area{
+    display:grid;
+    gap:14px;
+}
+.form-linha{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    padding:14px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:#fff;
+}
+.import-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr auto;
+    gap:14px;
+    width:100%;
+    align-items:end;
+}
+.input-group{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
+.input-group label{
+    font-size:14px;
+    font-weight:900;
+    color:var(--text);
+}
+.input-group input,
+.input-group select,
+.input-group textarea{
+    width:100%;
+    padding:13px 14px;
+    border:1px solid var(--line-strong);
+    border-radius:14px;
+    font-size:14px;
+    color:var(--text);
+    background:#fff;
+    transition:border-color .15s ease, box-shadow .15s ease;
+}
+.input-group textarea{
+    min-height:96px;
+    resize:vertical;
+}
+.input-group input:focus,
+.input-group select:focus,
+.input-group textarea:focus{
+    outline:none;
+    border-color:#ffb29f;
+    box-shadow:0 0 0 4px rgba(238,77,45,.10);
+}
+.criacao-grid{
+    display:grid;
+    grid-template-columns:repeat(12, minmax(0, 1fr));
+    gap:14px;
+}
+.span-3{grid-column:span 3}
+.span-4{grid-column:span 4}
+.span-5{grid-column:span 5}
+.span-6{grid-column:span 6}
+.span-8{grid-column:span 8}
+.span-12{grid-column:span 12}
+.form-box{
+    background:linear-gradient(180deg,#ffffff 0%,#fcfdff 100%);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:18px;
+}
+.form-box h4{
+    margin:0 0 8px 0;
+    font-size:18px;
+    font-weight:900;
+}
+.form-box p{
+    margin:0 0 14px 0;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.45;
+}
+.chips-ajuda{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:8px;
+}
+.chip-ajuda{
+    display:inline-flex;
+    align-items:center;
+    padding:8px 11px;
+    border-radius:999px;
+    border:1px solid #e7eaf1;
+    background:#f8fafc;
+    color:#344054;
+    font-size:12px;
+    font-weight:800;
+}
+.preview-box{
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    border-radius:16px;
+    padding:12px 14px;
+    color:#9a3412;
+    font-size:13px;
+    line-height:1.45;
 }
 .filtros{
     display:flex;
@@ -341,7 +856,7 @@ body{
     background:#fff;
     color:var(--text);
     font-size:13px;
-    font-weight:800;
+    font-weight:900;
 }
 .filtro-ativo{
     background:linear-gradient(135deg,var(--brand) 0%,var(--brand-2) 100%);
@@ -351,7 +866,7 @@ body{
 .table-wrap{
     overflow:auto;
     border:1px solid var(--line);
-    border-radius:16px;
+    border-radius:18px;
     background:#fff;
 }
 table{
@@ -363,10 +878,10 @@ table{
 thead th{
     background:linear-gradient(180deg,#f9fbfd 0%,#f1f5f9 100%);
     color:#1f2937;
-    font-weight:800;
+    font-weight:900;
     font-size:14px;
     text-align:left;
-    padding:14px 12px;
+    padding:15px 12px;
     border-bottom:1px solid var(--line);
     white-space:nowrap;
 }
@@ -376,6 +891,9 @@ tbody td{
     font-size:14px;
     vertical-align:top;
 }
+tbody tr:hover{
+    background:#fcfdff;
+}
 .status{
     display:inline-flex;
     align-items:center;
@@ -383,7 +901,7 @@ tbody td{
     padding:8px 12px;
     border-radius:999px;
     font-size:12px;
-    font-weight:800;
+    font-weight:900;
     text-transform:capitalize;
 }
 .status::before{
@@ -393,24 +911,48 @@ tbody td{
     border-radius:50%;
     display:inline-block;
 }
-.status-ativo{color:#166534;background:#ecfdf3}
-.status-ativo::before{background:#22c55e}
-.status-conferindo{color:#92400e;background:#fff7ed}
-.status-conferindo::before{background:#f59e0b}
-.status-finalizado{color:#475467;background:#f2f4f7}
-.status-finalizado::before{background:#98a2b3}
+.status-ativo{
+    color:#166534;
+    background:#ecfdf3;
+}
+.status-ativo::before{
+    background:#22c55e;
+}
+.status-conferindo{
+    color:#92400e;
+    background:#fff7ed;
+}
+.status-conferindo::before{
+    background:#f59e0b;
+}
+.status-finalizado{
+    color:#475467;
+    background:#f2f4f7;
+}
+.status-finalizado::before{
+    background:#98a2b3;
+}
 .tag{
     display:inline-block;
     padding:8px 12px;
     border-radius:999px;
     font-size:12px;
-    font-weight:800;
+    font-weight:900;
     background:#f3f6fb;
     color:#344054;
     border:1px solid #e6ebf2;
 }
-.vazio{text-align:center;color:var(--muted);padding:24px;font-size:15px}
-.lista-detalhes{display:flex;flex-direction:column;gap:8px}
+.vazio{
+    text-align:center;
+    color:var(--muted);
+    padding:24px;
+    font-size:15px;
+}
+.lista-detalhes{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
 .item-detalhe{
     background:#f8fafc;
     border:1px solid #e5e7eb;
@@ -418,32 +960,44 @@ tbody td{
     padding:10px 12px;
     line-height:1.45;
 }
-.import-grid{
-    display:grid;
-    grid-template-columns:1fr 1fr auto;
-    gap:14px;
-    width:100%;
-    align-items:end;
+@media (max-width:1100px){
+    .hero{
+        grid-template-columns:1fr;
+    }
+    .kpis,.kpis-4{
+        grid-template-columns:repeat(2,minmax(140px,1fr));
+    }
+    .import-grid{
+        grid-template-columns:1fr;
+    }
+    .criacao-grid{
+        grid-template-columns:1fr;
+    }
+    .span-3,.span-4,.span-5,.span-6,.span-8,.span-12{
+        grid-column:span 1;
+    }
 }
-.input-group{
-    display:flex;
-    flex-direction:column;
-    gap:6px;
-}
-.input-group label{
-    font-size:14px;
-    font-weight:800;
-    color:var(--text);
-}
-@media (max-width:980px){
-    .container{padding:16px}
-    .topo{padding:18px 16px;flex-direction:column;align-items:flex-start}
-    .kpis,.kpis-4{grid-template-columns:repeat(2,minmax(140px,1fr))}
-    .import-grid{grid-template-columns:1fr}
-}
-@media (max-width:640px){
-    .kpis,.kpis-4{grid-template-columns:1fr}
-    .btn{width:100%}
+@media (max-width:720px){
+    .container{
+        padding:16px;
+    }
+    .topo{
+        padding:18px 16px;
+        flex-direction:column;
+        align-items:flex-start;
+    }
+    .topo h2{
+        font-size:24px;
+    }
+    .hero-title{
+        font-size:24px;
+    }
+    .kpis,.kpis-4{
+        grid-template-columns:1fr;
+    }
+    .btn{
+        width:100%;
+    }
 }
 </style>
 </head>
@@ -463,16 +1017,84 @@ tbody td{
 </div>
 
 <div class="container">
+
+    <div class="hero">
+        <div class="hero-card hero-main">
+            <h1 class="hero-title">Central de rotas e produtividade</h1>
+            <p class="hero-text">
+                Aqui você importa a escala, cria rotas manualmente, acompanha o status dos motoristas e enxerga a produtividade das mesas em tempo real em um único painel.
+            </p>
+
+            <div class="hero-mini-grid">
+                <div class="hero-mini">
+                    <div class="hero-mini-label">Motoristas ativos</div>
+                    <div class="hero-mini-value"><?= $totalAtivos ?></div>
+                </div>
+                <div class="hero-mini">
+                    <div class="hero-mini-label">Em conferência</div>
+                    <div class="hero-mini-value"><?= $totalConferindo ?></div>
+                </div>
+                <div class="hero-mini">
+                    <div class="hero-mini-label">Finalizados</div>
+                    <div class="hero-mini-value"><?= $totalFinalizados ?></div>
+                </div>
+                <div class="hero-mini">
+                    <div class="hero-mini-label">Rotas registradas</div>
+                    <div class="hero-mini-value"><?= $totalRotasMesas ?></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hero-card hero-side">
+            <h2 class="hero-title" style="font-size:24px;">Leitura rápida da operação</h2>
+            <p class="hero-text">
+                Visual limpo para identificar rapidamente quantidade de motoristas, andamento da conferência, produtividade e criação manual de rotas.
+            </p>
+
+            <div class="hero-mini-grid">
+                <div class="hero-mini">
+                    <div class="hero-mini-label">Tempo médio geral</div>
+                    <div class="hero-mini-value" style="font-size:22px;"><?= formatarDuracao($tempoMedioGeral) ?></div>
+                </div>
+                <div class="hero-mini">
+                    <div class="hero-mini-label">Rotas por hora</div>
+                    <div class="hero-mini-value" style="font-size:22px;"><?= $rotasPorHoraGeral ?></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <?php if ($flashSuccess): ?>
+        <div class="flash success"><?= htmlspecialchars($flashSuccess) ?></div>
+    <?php endif; ?>
+
+    <?php if ($flashError): ?>
+        <div class="flash error"><?= htmlspecialchars($flashError) ?></div>
+    <?php endif; ?>
+
     <div class="card">
         <div class="bloco-info">
             <h3>Resumo da Operação</h3>
             <p>Visão geral dos motoristas ativos na escala atual.</p>
         </div>
+
         <div class="kpis">
-            <div class="kpi"><div class="kpi-label">Total</div><div class="kpi-value"><?= $totalGeral ?></div></div>
-            <div class="kpi"><div class="kpi-label">Ativos</div><div class="kpi-value"><?= $totalAtivos ?></div></div>
-            <div class="kpi"><div class="kpi-label">Conferindo</div><div class="kpi-value"><?= $totalConferindo ?></div></div>
-            <div class="kpi"><div class="kpi-label">Finalizados</div><div class="kpi-value"><?= $totalFinalizados ?></div></div>
+            <div class="kpi">
+                <div class="kpi-label">Total</div>
+                <div class="kpi-value"><?= $totalGeral ?></div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Ativos</div>
+                <div class="kpi-value"><?= $totalAtivos ?></div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Conferindo</div>
+                <div class="kpi-value"><?= $totalConferindo ?></div>
+            </div>
+            <div class="kpi">
+                <div class="kpi-label">Finalizados</div>
+                <div class="kpi-value"><?= $totalFinalizados ?></div>
+            </div>
         </div>
     </div>
 
@@ -507,9 +1129,116 @@ tbody td{
 
     <div class="card">
         <div class="bloco-info">
+            <h3>Criar rota manual</h3>
+            <p>
+                Crie ou atualize um motorista diretamente pelo painel. Para Fiorino e Passeio use o padrão normal. Para MOTO use rota exibida + fórmula moto.
+            </p>
+        </div>
+
+        <form method="post" class="form-area">
+            <input type="hidden" name="action" value="create_route">
+
+            <div class="criacao-grid">
+                <div class="form-box span-12">
+                    <h4>Dados do motorista</h4>
+                    <p>Esses dados serão usados para inserir ou atualizar o motorista na base ativa.</p>
+
+                    <div class="criacao-grid">
+                        <div class="input-group span-3">
+                            <label for="driver_id_manual">ID do motorista</label>
+                            <input type="text" name="driver_id_manual" id="driver_id_manual" placeholder="Ex: 1955336" required>
+                        </div>
+
+                        <div class="input-group span-5">
+                            <label for="driver_name_manual">Nome do motorista</label>
+                            <input type="text" name="driver_name_manual" id="driver_name_manual" placeholder="Ex: ADILSON TEIXEIRA LOPES" required>
+                        </div>
+
+                        <div class="input-group span-4">
+                            <label for="vehicle_type_manual">Tipo de veículo</label>
+                            <select name="vehicle_type_manual" id="vehicle_type_manual" required>
+                                <option value="">Selecione</option>
+                                <option value="PASSEIO">PASSEIO</option>
+                                <option value="FIORINO">FIORINO</option>
+                                <option value="ZOF-PASSEIO-AR">ZOF-PASSEIO-AR</option>
+                                <option value="ZOF-FIORINO-AR">ZOF-FIORINO-AR</option>
+                                <option value="MOTO">MOTO</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-box span-6" id="boxNormal">
+                    <h4>Criação padrão normal</h4>
+                    <p>Use esse formato para carro, passeio e fiorino.</p>
+
+                    <div class="input-group">
+                        <label for="cluster_normal_manual">Rota no padrão normal</label>
+                        <input
+                            type="text"
+                            name="cluster_normal_manual"
+                            id="cluster_normal_manual"
+                            placeholder="Ex: A-1+B-2/120"
+                        >
+                    </div>
+
+                    <div class="chips-ajuda">
+                        <span class="chip-ajuda">A-1+B-2/120</span>
+                        <span class="chip-ajuda">B-14+B-15/111</span>
+                        <span class="chip-ajuda">C-21/90</span>
+                    </div>
+
+                    <div class="preview-box" style="margin-top:12px;">
+                        Para veículos normais, o sistema lê o total após a barra e divide os pacotes entre os clusters para salvar em <strong>driver_clusters</strong>.
+                    </div>
+                </div>
+
+                <div class="form-box span-6" id="boxMoto">
+                    <h4>Criação padrão moto</h4>
+                    <p>Use rota exibida + fórmula. A soma dos pacotes sai da fórmula.</p>
+
+                    <div class="input-group">
+                        <label for="cluster_moto_manual">Rota exibida da moto</label>
+                        <input
+                            type="text"
+                            name="cluster_moto_manual"
+                            id="cluster_moto_manual"
+                            placeholder="Ex: D-3+D-4"
+                        >
+                    </div>
+
+                    <div class="input-group" style="margin-top:12px;">
+                        <label for="moto_formula_manual">Fórmula moto</label>
+                        <textarea
+                            name="moto_formula_manual"
+                            id="moto_formula_manual"
+                            placeholder="Ex: D-3(60)+D-4(55)"
+                        ></textarea>
+                    </div>
+
+                    <div class="chips-ajuda">
+                        <span class="chip-ajuda">D-3(60)+D-4(55)</span>
+                        <span class="chip-ajuda">C-21(23)+C-20(46)+C-18(54)</span>
+                    </div>
+
+                    <div class="preview-box" id="previewMoto" style="margin-top:12px;">
+                        Total calculado pela fórmula: <strong>0</strong> pacotes.
+                    </div>
+                </div>
+
+                <div class="span-12" style="display:flex; justify-content:flex-end; gap:12px; flex-wrap:wrap;">
+                    <button type="submit" class="btn btn-ok">Salvar rota manual</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="bloco-info">
             <h3>Motoristas</h3>
             <p>Filtre rapidamente os registros por status.</p>
         </div>
+
         <div class="filtros">
             <a href="admin.php?status=todos" class="filtro-btn <?= filtroAtivo($filtroStatus, 'todos') ?>">Todos</a>
             <a href="admin.php?status=ativo" class="filtro-btn <?= filtroAtivo($filtroStatus, 'ativo') ?>">Ativos</a>
@@ -564,10 +1293,22 @@ tbody td{
         </div>
 
         <div class="kpis-4">
-            <div class="kpi relatorio"><div class="kpi-label">Total de Rotas Registradas</div><div class="kpi-value"><?= $totalRotasMesas ?></div></div>
-            <div class="kpi relatorio"><div class="kpi-label">Tempo Médio Geral</div><div class="kpi-value"><?= formatarDuracao($tempoMedioGeral) ?></div></div>
-            <div class="kpi relatorio"><div class="kpi-label">Rotas por Hora (Geral)</div><div class="kpi-value"><?= $rotasPorHoraGeral ?></div></div>
-            <div class="kpi relatorio"><div class="kpi-label">1 Rota a Cada</div><div class="kpi-value"><?= formatarMinutosPorRota($tempoMedioGeral) ?></div></div>
+            <div class="kpi relatorio">
+                <div class="kpi-label">Total de Rotas Registradas</div>
+                <div class="kpi-value"><?= $totalRotasMesas ?></div>
+            </div>
+            <div class="kpi relatorio">
+                <div class="kpi-label">Tempo Médio Geral</div>
+                <div class="kpi-value"><?= formatarDuracao($tempoMedioGeral) ?></div>
+            </div>
+            <div class="kpi relatorio">
+                <div class="kpi-label">Rotas por Hora (Geral)</div>
+                <div class="kpi-value"><?= $rotasPorHoraGeral ?></div>
+            </div>
+            <div class="kpi relatorio">
+                <div class="kpi-label">1 Rota a Cada</div>
+                <div class="kpi-value"><?= formatarMinutosPorRota($tempoMedioGeral) ?></div>
+            </div>
         </div>
 
         <div class="table-wrap">
@@ -603,8 +1344,20 @@ tbody td{
                                 <td><strong><?= formatarDuracao($tempoMedioMesa) ?></strong></td>
                                 <td><strong><?= formatarMinutosPorRota($tempoMedioMesa) ?></strong></td>
                                 <td><?= formatarDuracao($dados["segundos_total"]) ?></td>
-                                <td><div class="lista-detalhes"><?php foreach ($rotas as $rota): ?><div class="item-detalhe"><?= htmlspecialchars($rota) ?></div><?php endforeach; ?></div></td>
-                                <td><div class="lista-detalhes"><?php foreach ($motoristas as $motorista): ?><div class="item-detalhe"><?= htmlspecialchars($motorista) ?></div><?php endforeach; ?></div></td>
+                                <td>
+                                    <div class="lista-detalhes">
+                                        <?php foreach ($rotas as $rota): ?>
+                                            <div class="item-detalhe"><?= htmlspecialchars($rota) ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="lista-detalhes">
+                                        <?php foreach ($motoristas as $motorista): ?>
+                                            <div class="item-detalhe"><?= htmlspecialchars($motorista) ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </td>
                                 <td>
                                     <div class="lista-detalhes">
                                         <?php foreach ($dados["registros"] as $registro): ?>
@@ -625,6 +1378,7 @@ tbody td{
             </table>
         </div>
     </div>
+
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -650,6 +1404,56 @@ adminSupabase
     .subscribe((status) => {
         console.log("Canal realtime admin:", status);
     });
+
+const vehicleTypeManual = document.getElementById("vehicle_type_manual");
+const boxNormal = document.getElementById("boxNormal");
+const boxMoto = document.getElementById("boxMoto");
+const clusterNormalManual = document.getElementById("cluster_normal_manual");
+const clusterMotoManual = document.getElementById("cluster_moto_manual");
+const motoFormulaManual = document.getElementById("moto_formula_manual");
+const previewMoto = document.getElementById("previewMoto");
+
+function atualizarBlocosCriacao() {
+    const valor = (vehicleTypeManual.value || "").toUpperCase();
+
+    if (valor === "MOTO") {
+        boxMoto.style.opacity = "1";
+        boxMoto.style.borderColor = "#fed7aa";
+        boxNormal.style.opacity = ".65";
+    } else if (valor) {
+        boxNormal.style.opacity = "1";
+        boxNormal.style.borderColor = "#fed7aa";
+        boxMoto.style.opacity = ".65";
+    } else {
+        boxNormal.style.opacity = "1";
+        boxMoto.style.opacity = "1";
+        boxNormal.style.borderColor = "";
+        boxMoto.style.borderColor = "";
+    }
+}
+
+function somarFormulaMoto(texto) {
+    const regex = /([A-Z]-\d+)\((\d+)\)/gi;
+    let match;
+    let total = 0;
+
+    while ((match = regex.exec(texto)) !== null) {
+        total += parseInt(match[2], 10) || 0;
+    }
+
+    return total;
+}
+
+function atualizarPreviewMoto() {
+    const total = somarFormulaMoto(motoFormulaManual.value || "");
+    previewMoto.innerHTML = `Total calculado pela fórmula: <strong>${total}</strong> pacotes.`;
+}
+
+vehicleTypeManual.addEventListener("change", atualizarBlocosCriacao);
+motoFormulaManual.addEventListener("input", atualizarPreviewMoto);
+
+atualizarBlocosCriacao();
+atualizarPreviewMoto();
 </script>
 
 </body>
