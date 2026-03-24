@@ -142,10 +142,16 @@ function getOrCreateActiveImportId(PDO $pdo, string $tipo, string $email): int {
     return (int)$stmtNovo->fetchColumn();
 }
 
+/* =========================
+   FLASH
+========================= */
 $flashSuccess = $_SESSION["flash_success"] ?? "";
 $flashError = $_SESSION["flash_error"] ?? "";
 unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
+/* =========================
+   CRIAR / ATUALIZAR ROTA
+========================= */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "create_route") {
     $driverId = trim((string)($_POST["driver_id_manual"] ?? ""));
     $driverName = trim((string)($_POST["driver_name_manual"] ?? ""));
@@ -185,7 +191,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "creat
             $packagesTotal = somarPacotesMoto($clustersMoto);
             $motoFormula = $formulaMoto;
             $clustersParaSalvar = $clustersMoto;
-
         } else {
             if (!in_array($vehicleType, $veiculosNormais, true)) {
                 throw new Exception("Veículo inválido para criação manual.");
@@ -316,6 +321,59 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "creat
     }
 }
 
+/* =========================
+   EXCLUIR MOTORISTA / ROTA
+========================= */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delete_route") {
+    $driverDeleteId = (int)($_POST["delete_driver_id"] ?? 0);
+
+    try {
+        if ($driverDeleteId <= 0) {
+            throw new Exception("Motorista inválido para exclusão.");
+        }
+
+        $pdo->beginTransaction();
+
+        $stmtBusca = $pdo->prepare("SELECT id, driver_name, driver_id FROM drivers WHERE id = ? LIMIT 1");
+        $stmtBusca->execute([$driverDeleteId]);
+        $driverDelete = $stmtBusca->fetch();
+
+        if (!$driverDelete) {
+            throw new Exception("Motorista não encontrado.");
+        }
+
+        $stmtMesaControle = $pdo->prepare("DELETE FROM mesa_controle WHERE driver_db_id = ?");
+        $stmtMesaControle->execute([$driverDeleteId]);
+
+        $stmtMesaTempos = $pdo->prepare("DELETE FROM mesa_tempos WHERE driver_ref = ?");
+        $stmtMesaTempos->execute([$driverDeleteId]);
+
+        $stmtClusters = $pdo->prepare("DELETE FROM driver_clusters WHERE driver_ref = ?");
+        $stmtClusters->execute([$driverDeleteId]);
+
+        $stmtDriver = $pdo->prepare("DELETE FROM drivers WHERE id = ?");
+        $stmtDriver->execute([$driverDeleteId]);
+
+        $pdo->commit();
+
+        $_SESSION["flash_success"] = "Motorista {$driverDelete["driver_name"]} (ID: {$driverDelete["driver_id"]}) excluído com sucesso.";
+        header("Location: admin.php");
+        exit;
+
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        $_SESSION["flash_error"] = "Erro ao excluir rota: " . $e->getMessage();
+        header("Location: admin.php");
+        exit;
+    }
+}
+
+/* =========================
+   LISTAGEM MOTORISTAS
+========================= */
 $filtroStatus = strtolower(trim($_GET["status"] ?? "todos"));
 
 $sql = "
@@ -337,6 +395,9 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $drivers = $stmt->fetchAll();
 
+/* =========================
+   RESUMO
+========================= */
 $stmtResumo = $pdo->query("
     SELECT
         COUNT(*) AS total,
@@ -353,6 +414,9 @@ $totalAtivos = (int)($resumo["ativos"] ?? 0);
 $totalConferindo = (int)($resumo["conferindo"] ?? 0);
 $totalFinalizados = (int)($resumo["finalizados"] ?? 0);
 
+/* =========================
+   RELATÓRIO PARA CSV
+========================= */
 $stmtTempos = $pdo->query("
     SELECT
         mesa_numero,
@@ -395,9 +459,6 @@ foreach ($temposRows as $row) {
     $rotaTexto = trim((string)($row["rota_texto"] ?? ""));
     $driverName = trim((string)($row["driver_name"] ?? ""));
     $driverId = trim((string)($row["driver_id"] ?? ""));
-    $vehicleType = trim((string)($row["vehicle_type"] ?? ""));
-    $startedAt = trim((string)($row["started_at"] ?? ""));
-    $finishedAt = trim((string)($row["finished_at"] ?? ""));
 
     $relatorioMesas[$mesa]["rotas_total"]++;
     $relatorioMesas[$mesa]["segundos_total"] += max(0, $duracao);
@@ -418,10 +479,7 @@ foreach ($temposRows as $row) {
         "rota_texto" => $rotaTexto,
         "driver_name" => $driverName,
         "driver_id" => $driverId,
-        "vehicle_type" => $vehicleType,
-        "duration_seconds" => $duracao,
-        "started_at" => $startedAt,
-        "finished_at" => $finishedAt
+        "duration_seconds" => $duracao
     ];
 
     $totalRotasMesas++;
@@ -505,6 +563,8 @@ if (isset($_GET["export"]) && $_GET["export"] === "mesas_csv") {
     --green-bg:#ecfdf3;
     --amber:#f59e0b;
     --amber-bg:#fff7ed;
+    --red:#dc2626;
+    --red-2:#b91c1c;
     --shadow-sm:0 8px 18px rgba(15,23,42,.05);
     --shadow-md:0 18px 40px rgba(15,23,42,.08);
     --radius:20px;
@@ -516,15 +576,13 @@ body{
     margin:0;
     font-family:Arial,sans-serif;
     color:var(--text);
-    background:
-        radial-gradient(circle at top left,#ffffff 0%,var(--bg) 38%,var(--bg-soft) 100%);
+    background:radial-gradient(circle at top left,#ffffff 0%,var(--bg) 38%,var(--bg-soft) 100%);
 }
 .topo{
     position:sticky;
     top:0;
     z-index:20;
-    background:
-        linear-gradient(90deg,var(--brand) 0%,var(--brand-2) 100%);
+    background:linear-gradient(90deg,var(--brand) 0%,var(--brand-2) 100%);
     color:#fff;
     padding:18px 28px;
     display:flex;
@@ -689,24 +747,10 @@ body{
 .btn-ok{
     background:linear-gradient(135deg,#16a34a 0%, #22c55e 100%);
 }
-.flash{
-    border-radius:16px;
-    padding:14px 16px;
-    margin-bottom:18px;
-    font-weight:800;
-    font-size:14px;
+.btn-danger{
+    background:linear-gradient(135deg,var(--red) 0%, var(--red-2) 100%);
 }
-.flash.success{
-    background:#ecfdf3;
-    color:#166534;
-    border:1px solid #bbf7d0;
-}
-.flash.error{
-    background:#fff1f2;
-    color:#b91c1c;
-    border:1px solid #fecdd3;
-}
-.kpis,.kpis-4{
+.kpis{
     display:grid;
     grid-template-columns:repeat(4,minmax(180px,1fr));
     gap:14px;
@@ -729,10 +773,6 @@ body{
     font-size:32px;
     font-weight:900;
     color:var(--text);
-}
-.kpi.relatorio{
-    background:linear-gradient(180deg,#ffffff 0%,#fff7ed 100%);
-    border-color:#fed7aa;
 }
 .form-area{
     display:grid;
@@ -797,7 +837,6 @@ body{
 .span-4{grid-column:span 4}
 .span-5{grid-column:span 5}
 .span-6{grid-column:span 6}
-.span-8{grid-column:span 8}
 .span-12{grid-column:span 12}
 .form-box{
     background:linear-gradient(180deg,#ffffff 0%,#fcfdff 100%);
@@ -948,23 +987,101 @@ tbody tr:hover{
     padding:24px;
     font-size:15px;
 }
-.lista-detalhes{
+.acoes-tabela{
     display:flex;
-    flex-direction:column;
     gap:8px;
+    flex-wrap:wrap;
 }
-.item-detalhe{
-    background:#f8fafc;
-    border:1px solid #e5e7eb;
-    border-radius:12px;
+.btn-mini{
+    appearance:none;
+    border:none;
+    cursor:pointer;
+    text-decoration:none;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
     padding:10px 12px;
-    line-height:1.45;
+    border-radius:12px;
+    font-size:13px;
+    font-weight:800;
+    color:#fff;
+    box-shadow:0 8px 18px rgba(0,0,0,.10);
+}
+.btn-mini.edit{
+    background:linear-gradient(135deg,var(--blue) 0%,var(--blue-2) 100%);
+}
+.btn-mini.delete{
+    background:linear-gradient(135deg,var(--red) 0%,var(--red-2) 100%);
+}
+.modal-feedback{
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.40);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:9999;
+    padding:18px;
+}
+.modal-feedback.ativo{
+    display:flex;
+}
+.modal-card{
+    width:100%;
+    max-width:480px;
+    background:#fff;
+    border-radius:24px;
+    box-shadow:0 24px 60px rgba(15,23,42,.20);
+    padding:24px;
+    text-align:center;
+    animation:modalIn .18s ease;
+}
+.modal-icon{
+    width:70px;
+    height:70px;
+    border-radius:50%;
+    margin:0 auto 14px auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:34px;
+    font-weight:900;
+}
+.modal-icon.success{
+    background:#ecfdf3;
+    color:#16a34a;
+}
+.modal-icon.error{
+    background:#fff1f2;
+    color:#dc2626;
+}
+.modal-title{
+    font-size:24px;
+    font-weight:900;
+    margin:0 0 10px 0;
+}
+.modal-text{
+    font-size:15px;
+    color:var(--muted);
+    line-height:1.5;
+    margin:0 0 18px 0;
+    white-space:pre-line;
+}
+.modal-actions{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    flex-wrap:wrap;
+}
+@keyframes modalIn{
+    from{opacity:0;transform:translateY(8px) scale(.98)}
+    to{opacity:1;transform:translateY(0) scale(1)}
 }
 @media (max-width:1100px){
     .hero{
         grid-template-columns:1fr;
     }
-    .kpis,.kpis-4{
+    .kpis{
         grid-template-columns:repeat(2,minmax(140px,1fr));
     }
     .import-grid{
@@ -973,7 +1090,7 @@ tbody tr:hover{
     .criacao-grid{
         grid-template-columns:1fr;
     }
-    .span-3,.span-4,.span-5,.span-6,.span-8,.span-12{
+    .span-3,.span-4,.span-5,.span-6,.span-12{
         grid-column:span 1;
     }
 }
@@ -992,7 +1109,7 @@ tbody tr:hover{
     .hero-title{
         font-size:24px;
     }
-    .kpis,.kpis-4{
+    .kpis{
         grid-template-columns:1fr;
     }
     .btn{
@@ -1009,7 +1126,7 @@ tbody tr:hover{
         <div class="topo-sub">Gerencie rotas, motoristas, status e produtividade das mesas</div>
     </div>
     <div class="acoes-topo">
-        <a href="#relatorio-mesas" class="btn btn-brand">Relatório das Mesas</a>
+        <a href="produtividade.php" class="btn btn-brand">Dashboard Produtividade</a>
         <a href="admin.php?export=mesas_csv" class="btn btn-sec">Baixar Relatório CSV</a>
         <a href="conferente.php" class="btn btn-sec">Painel Conferente</a>
         <a href="logout.php" class="btn btn-sair">Sair</a>
@@ -1022,7 +1139,7 @@ tbody tr:hover{
         <div class="hero-card hero-main">
             <h1 class="hero-title">Central de rotas e produtividade</h1>
             <p class="hero-text">
-                Aqui você importa a escala, cria rotas manualmente, acompanha o status dos motoristas e enxerga a produtividade das mesas em tempo real em um único painel.
+                Aqui você importa a escala, cria rotas manualmente, acompanha o status dos motoristas e gerencia a operação em um único painel.
             </p>
 
             <div class="hero-mini-grid">
@@ -1048,7 +1165,7 @@ tbody tr:hover{
         <div class="hero-card hero-side">
             <h2 class="hero-title" style="font-size:24px;">Leitura rápida da operação</h2>
             <p class="hero-text">
-                Visual limpo para identificar rapidamente quantidade de motoristas, andamento da conferência, produtividade e criação manual de rotas.
+                Visual limpo para identificar rapidamente quantidade de motoristas, andamento da conferência, criação manual de rotas e exportação de relatório.
             </p>
 
             <div class="hero-mini-grid">
@@ -1063,14 +1180,6 @@ tbody tr:hover{
             </div>
         </div>
     </div>
-
-    <?php if ($flashSuccess): ?>
-        <div class="flash success"><?= htmlspecialchars($flashSuccess) ?></div>
-    <?php endif; ?>
-
-    <?php if ($flashError): ?>
-        <div class="flash error"><?= htmlspecialchars($flashError) ?></div>
-    <?php endif; ?>
 
     <div class="card">
         <div class="bloco-info">
@@ -1121,7 +1230,7 @@ tbody tr:hover{
                 </div>
             </form>
 
-            <form action="limpar_escala.php" method="post" onsubmit="return confirm('Tem certeza que deseja limpar a escala atual?');" class="form-linha">
+            <form action="limpar_escala.php" method="post" class="form-linha" onsubmit="return abrirConfirmacaoAcao(this, 'Tem certeza que deseja limpar a escala atual?');">
                 <button class="btn btn-sec" type="submit">Limpar Escala</button>
             </form>
         </div>
@@ -1174,12 +1283,7 @@ tbody tr:hover{
 
                     <div class="input-group">
                         <label for="cluster_normal_manual">Rota no padrão normal</label>
-                        <input
-                            type="text"
-                            name="cluster_normal_manual"
-                            id="cluster_normal_manual"
-                            placeholder="Ex: A-1+B-2/120"
-                        >
+                        <input type="text" name="cluster_normal_manual" id="cluster_normal_manual" placeholder="Ex: A-1+B-2/120">
                     </div>
 
                     <div class="chips-ajuda">
@@ -1199,21 +1303,12 @@ tbody tr:hover{
 
                     <div class="input-group">
                         <label for="cluster_moto_manual">Rota exibida da moto</label>
-                        <input
-                            type="text"
-                            name="cluster_moto_manual"
-                            id="cluster_moto_manual"
-                            placeholder="Ex: D-3+D-4"
-                        >
+                        <input type="text" name="cluster_moto_manual" id="cluster_moto_manual" placeholder="Ex: D-3+D-4">
                     </div>
 
                     <div class="input-group" style="margin-top:12px;">
                         <label for="moto_formula_manual">Fórmula moto</label>
-                        <textarea
-                            name="moto_formula_manual"
-                            id="moto_formula_manual"
-                            placeholder="Ex: D-3(60)+D-4(55)"
-                        ></textarea>
+                        <textarea name="moto_formula_manual" id="moto_formula_manual" placeholder="Ex: D-3(60)+D-4(55)"></textarea>
                     </div>
 
                     <div class="chips-ajuda">
@@ -1275,7 +1370,19 @@ tbody tr:hover{
                                 <td><strong><?= htmlspecialchars($d["packages_total"]) ?></strong></td>
                                 <td><?= htmlspecialchars($d["vehicle_type"]) ?></td>
                                 <td><span class="status <?= $statusClass ?>"><?= htmlspecialchars($d["status"]) ?></span></td>
-                                <td><a class="btn btn-edit" href="editar_motorista.php?id=<?= $d["id"] ?>">Editar</a></td>
+                                <td>
+                                    <div class="acoes-tabela">
+                                        <a class="btn-mini edit" href="editar_motorista.php?id=<?= $d["id"] ?>">Editar</a>
+
+                                        <form method="post" class="form-delete-route" style="margin:0;">
+                                            <input type="hidden" name="action" value="delete_route">
+                                            <input type="hidden" name="delete_driver_id" value="<?= (int)$d["id"] ?>">
+                                            <button type="submit" class="btn-mini delete">
+                                                Excluir
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -1286,105 +1393,35 @@ tbody tr:hover{
         </div>
     </div>
 
-    <div class="card" id="relatorio-mesas">
-        <div class="bloco-info">
-            <h3>Relatório Completo das Mesas</h3>
-            <p>Mostra produtividade real de cada mesa com rotas, motoristas e médias.</p>
-        </div>
+</div>
 
-        <div class="kpis-4">
-            <div class="kpi relatorio">
-                <div class="kpi-label">Total de Rotas Registradas</div>
-                <div class="kpi-value"><?= $totalRotasMesas ?></div>
-            </div>
-            <div class="kpi relatorio">
-                <div class="kpi-label">Tempo Médio Geral</div>
-                <div class="kpi-value"><?= formatarDuracao($tempoMedioGeral) ?></div>
-            </div>
-            <div class="kpi relatorio">
-                <div class="kpi-label">Rotas por Hora (Geral)</div>
-                <div class="kpi-value"><?= $rotasPorHoraGeral ?></div>
-            </div>
-            <div class="kpi relatorio">
-                <div class="kpi-label">1 Rota a Cada</div>
-                <div class="kpi-value"><?= formatarMinutosPorRota($tempoMedioGeral) ?></div>
-            </div>
-        </div>
-
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Mesa</th>
-                        <th>Qtd Rotas</th>
-                        <th>Rotas por Hora</th>
-                        <th>Média por Rota</th>
-                        <th>1 Rota a Cada</th>
-                        <th>Tempo Total</th>
-                        <th>Rotas Feitas</th>
-                        <th>Motoristas</th>
-                        <th>Detalhamento</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (!empty($relatorioMesas)): ?>
-                        <?php foreach ($relatorioMesas as $mesa => $dados): ?>
-                            <?php
-                                $rotas = array_keys($dados["rotas_unicas"]);
-                                sort($rotas);
-                                $motoristas = array_keys($dados["motoristas_unicos"]);
-                                sort($motoristas);
-                                $tempoMedioMesa = $dados["rotas_total"] > 0 ? (int)floor($dados["segundos_total"] / $dados["rotas_total"]) : 0;
-                                $rotasPorHoraMesa = $dados["segundos_total"] > 0 ? round($dados["rotas_total"] / ($dados["segundos_total"] / 3600), 2) : 0;
-                            ?>
-                            <tr>
-                                <td><span class="tag">Mesa <?= (int)$dados["mesa_numero"] ?></span></td>
-                                <td><strong><?= (int)$dados["rotas_total"] ?></strong></td>
-                                <td><strong><?= $rotasPorHoraMesa ?></strong></td>
-                                <td><strong><?= formatarDuracao($tempoMedioMesa) ?></strong></td>
-                                <td><strong><?= formatarMinutosPorRota($tempoMedioMesa) ?></strong></td>
-                                <td><?= formatarDuracao($dados["segundos_total"]) ?></td>
-                                <td>
-                                    <div class="lista-detalhes">
-                                        <?php foreach ($rotas as $rota): ?>
-                                            <div class="item-detalhe"><?= htmlspecialchars($rota) ?></div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="lista-detalhes">
-                                        <?php foreach ($motoristas as $motorista): ?>
-                                            <div class="item-detalhe"><?= htmlspecialchars($motorista) ?></div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="lista-detalhes">
-                                        <?php foreach ($dados["registros"] as $registro): ?>
-                                            <div class="item-detalhe">
-                                                <strong>Rota:</strong> <?= htmlspecialchars($registro["rota_texto"]) ?><br>
-                                                <strong>Motorista:</strong> <?= htmlspecialchars($registro["driver_name"]) ?><br>
-                                                <strong>Tempo:</strong> <?= formatarDuracao($registro["duration_seconds"]) ?>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <tr><td colspan="9" class="vazio">Nenhum registro finalizado encontrado para as mesas.</td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+<div class="modal-feedback" id="modalFeedback">
+    <div class="modal-card">
+        <div class="modal-icon" id="modalIcon">!</div>
+        <h3 class="modal-title" id="modalTitle">Aviso</h3>
+        <p class="modal-text" id="modalText"></p>
+        <div class="modal-actions">
+            <button class="btn btn-brand" id="modalCloseBtn" type="button">OK</button>
         </div>
     </div>
+</div>
 
+<div class="modal-feedback" id="modalConfirmacao">
+    <div class="modal-card">
+        <div class="modal-icon error">!</div>
+        <h3 class="modal-title">Confirmação</h3>
+        <p class="modal-text" id="modalConfirmText">Deseja continuar?</p>
+        <div class="modal-actions">
+            <button class="btn btn-sec" id="confirmCancelBtn" type="button">Cancelar</button>
+            <button class="btn btn-danger" id="confirmOkBtn" type="button">Confirmar</button>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const ADMIN_SUPABASE_URL = "https://uyqnkvegjqsnejlrgetc.supabase.co";
-const ADMIN_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5cW5rdmVnanFzbmVqbHJnZXRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODA3NjgsImV4cCI6MjA4OTI1Njc2OH0.f7ytVVrtdiNK4ROQ-Epxt9o0Pda1YiNF2V2sXhRjaE8";
+const ADMIN_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmVnanFzbmVqbHJnZXRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODA3NjgsImV4cCI6MjA4OTI1Njc2OH0.f7ytVVrtdiNK4ROQ-Epxt9o0Pda1YiNF2V2sXhRjaE8";
 const adminSupabase = window.supabase.createClient(ADMIN_SUPABASE_URL, ADMIN_SUPABASE_ANON_KEY);
 
 let adminReloadTimer = null;
@@ -1408,8 +1445,6 @@ adminSupabase
 const vehicleTypeManual = document.getElementById("vehicle_type_manual");
 const boxNormal = document.getElementById("boxNormal");
 const boxMoto = document.getElementById("boxMoto");
-const clusterNormalManual = document.getElementById("cluster_normal_manual");
-const clusterMotoManual = document.getElementById("cluster_moto_manual");
 const motoFormulaManual = document.getElementById("moto_formula_manual");
 const previewMoto = document.getElementById("previewMoto");
 
@@ -1420,10 +1455,12 @@ function atualizarBlocosCriacao() {
         boxMoto.style.opacity = "1";
         boxMoto.style.borderColor = "#fed7aa";
         boxNormal.style.opacity = ".65";
+        boxNormal.style.borderColor = "";
     } else if (valor) {
         boxNormal.style.opacity = "1";
         boxNormal.style.borderColor = "#fed7aa";
         boxMoto.style.opacity = ".65";
+        boxMoto.style.borderColor = "";
     } else {
         boxNormal.style.opacity = "1";
         boxMoto.style.opacity = "1";
@@ -1454,6 +1491,70 @@ motoFormulaManual.addEventListener("input", atualizarPreviewMoto);
 
 atualizarBlocosCriacao();
 atualizarPreviewMoto();
+
+const modalFeedback = document.getElementById("modalFeedback");
+const modalIcon = document.getElementById("modalIcon");
+const modalTitle = document.getElementById("modalTitle");
+const modalText = document.getElementById("modalText");
+const modalCloseBtn = document.getElementById("modalCloseBtn");
+
+function abrirModalFeedback(tipo, titulo, texto) {
+    modalIcon.className = "modal-icon " + tipo;
+    modalIcon.textContent = tipo === "success" ? "✓" : "!";
+    modalTitle.textContent = titulo;
+    modalText.textContent = texto;
+    modalFeedback.classList.add("ativo");
+}
+
+function fecharModalFeedback() {
+    modalFeedback.classList.remove("ativo");
+}
+
+modalCloseBtn.addEventListener("click", fecharModalFeedback);
+
+<?php if ($flashSuccess): ?>
+abrirModalFeedback("success", "Sucesso", <?= json_encode($flashSuccess) ?>);
+<?php endif; ?>
+
+<?php if ($flashError): ?>
+abrirModalFeedback("error", "Erro", <?= json_encode($flashError) ?>);
+<?php endif; ?>
+
+const modalConfirmacao = document.getElementById("modalConfirmacao");
+const modalConfirmText = document.getElementById("modalConfirmText");
+const confirmCancelBtn = document.getElementById("confirmCancelBtn");
+const confirmOkBtn = document.getElementById("confirmOkBtn");
+
+let formPendente = null;
+
+function abrirConfirmacaoAcao(form, mensagem) {
+    formPendente = form;
+    modalConfirmText.textContent = mensagem;
+    modalConfirmacao.classList.add("ativo");
+    return false;
+}
+
+function fecharConfirmacao() {
+    modalConfirmacao.classList.remove("ativo");
+    formPendente = null;
+}
+
+confirmCancelBtn.addEventListener("click", fecharConfirmacao);
+
+confirmOkBtn.addEventListener("click", function() {
+    if (formPendente) {
+        const form = formPendente;
+        fecharConfirmacao();
+        form.submit();
+    }
+});
+
+document.querySelectorAll(".form-delete-route").forEach(form => {
+    form.addEventListener("submit", function(e) {
+        e.preventDefault();
+        abrirConfirmacaoAcao(this, "Tem certeza que deseja excluir esta rota/motorista? Esta ação também remove clusters, mesa_controle e tempos relacionados.");
+    });
+});
 </script>
 
 </body>
