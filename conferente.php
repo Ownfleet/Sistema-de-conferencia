@@ -99,6 +99,12 @@ foreach ($driversMap as $driver) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Painel Conferente</title>
 <style>
+*{
+    box-sizing:border-box;
+}
+html, body{
+    height:100%;
+}
 body{
     margin:0;
     font-family:Arial,sans-serif;
@@ -111,7 +117,7 @@ body.modal-open{
 .topo{
     background:linear-gradient(90deg,#8f3b2f 0%,#a04535 100%);
     color:#fff;
-    padding:22px 30px;
+    padding:20px 28px;
     box-shadow:0 8px 24px rgba(143,59,47,.18);
 }
 .topo h2{
@@ -120,19 +126,19 @@ body.modal-open{
     letter-spacing:.2px;
 }
 .container{
-    padding:22px;
+    padding:20px;
 }
 .box-mesas{
     background:#fff;
-    border-radius:22px;
+    border-radius:24px;
     padding:22px;
-    margin-bottom:20px;
     box-shadow:0 10px 32px rgba(15,23,42,.06);
     border:1px solid #edf0f5;
 }
 .box-mesas h3{
     margin:0 0 18px 0;
-    font-size:24px;
+    font-size:22px;
+    color:#0f172a;
 }
 .mesas-grid{
     display:grid;
@@ -190,75 +196,77 @@ body.modal-open{
         inset 0 -4px 10px rgba(0,0,0,.16);
 }
 
+/* MODAL TELA CHEIA */
 .modal{
     position:fixed;
     inset:0;
-    background:rgba(15,23,42,.48);
+    background:rgba(15,23,42,.52);
     display:none;
-    align-items:center;
-    justify-content:center;
     z-index:9999;
-    padding:20px;
-    box-sizing:border-box;
-    overflow:auto;
+    padding:14px;
 }
 .modal.ativo{
-    display:flex;
+    display:block;
 }
 .modal-card{
     width:100%;
-    max-width:980px;
-    max-height:90vh;
-    overflow:auto;
-    background:#fff;
-    border-radius:24px;
+    height:calc(100vh - 28px);
+    background:#ffffff;
+    border-radius:28px;
     box-shadow:0 20px 60px rgba(15,23,42,.25);
-    padding:22px;
+    padding:18px;
+    display:grid;
+    grid-template-rows:auto auto 1fr;
+    gap:14px;
+    overflow:hidden;
 }
 .modal-topo{
     display:flex;
     justify-content:space-between;
     align-items:center;
     gap:12px;
-    margin-bottom:18px;
 }
 .modal-topo h3{
     margin:0;
-    font-size:30px;
+    font-size:28px;
+    color:#0f172a;
 }
 .btn-fechar{
     border:none;
     background:#0f172a;
     color:#fff;
-    width:44px;
-    height:44px;
-    border-radius:14px;
+    width:48px;
+    height:48px;
+    border-radius:16px;
     cursor:pointer;
-    font-size:20px;
+    font-size:22px;
     font-weight:bold;
+    flex:0 0 48px;
 }
+
 .busca-modal{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-    margin-bottom:18px;
+    display:grid;
+    grid-template-columns:minmax(280px, 1fr) 150px 160px;
+    gap:12px;
+    align-items:center;
 }
 .busca-modal input{
-    flex:1;
-    min-width:220px;
-    padding:15px 16px;
+    width:100%;
+    padding:16px 16px;
     border:1px solid #d7dce5;
-    border-radius:14px;
-    font-size:17px;
+    border-radius:16px;
+    font-size:18px;
+    min-width:0;
 }
 .busca-modal button{
     border:none;
-    border-radius:14px;
-    padding:14px 20px;
+    border-radius:16px;
+    padding:15px 18px;
     font-weight:900;
     cursor:pointer;
     color:#fff;
-    font-size:15px;
+    font-size:16px;
+    height:56px;
 }
 .btn-localizar{
     background:linear-gradient(90deg,#ee4d2d 0%,#ff6a3d 100%);
@@ -266,15 +274,46 @@ body.modal-open{
 .btn-limpar-mesa{
     background:#64748b;
 }
+
+.modal-conteudo{
+    min-height:0;
+    display:grid;
+    grid-template-columns:1.25fr .95fr;
+    gap:16px;
+    overflow:hidden;
+}
+
+.coluna-principal,
+.coluna-lateral{
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+}
+
 .resultado-mesa{
+    flex:1 1 auto;
     border:1px solid #e5e7eb;
-    border-radius:22px;
+    border-radius:24px;
     padding:18px;
     background:#f8fafc;
+    overflow:hidden;
 }
 .resultado-mesa.destacado-conferindo{
     border:2px solid #f59e0b;
     box-shadow:0 0 0 4px rgba(245,158,11,0.10);
+}
+.resultado-wrap{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+}
+.resultado-topo{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:14px;
+    align-items:start;
 }
 .resultado-mesa .titulo{
     font-size:15px;
@@ -284,48 +323,47 @@ body.modal-open{
 .nome{
     font-size:22px;
     font-weight:900;
-    margin:6px 0 12px 0;
+    margin:6px 0 10px 0;
     color:#111827;
+    line-height:1.15;
+}
+.info-basica{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:10px 14px;
 }
 .linha{
-    margin-bottom:8px;
     color:#374151;
-    font-size:15px;
+    font-size:16px;
 }
 .pacote-destaque{
-    margin-top:14px;
     background:linear-gradient(90deg,#fff4ef 0%,#fff 100%);
     border:2px solid #ffd5c7;
     color:#9a3412;
-    border-radius:16px;
+    border-radius:18px;
     padding:18px 20px;
-    font-size:32px;
+    font-size:30px;
     font-weight:900;
     text-align:center;
     letter-spacing:.4px;
 }
 .rota-super-destaque{
-    margin-top:14px;
     background:#fff;
     border:2px solid #cbd5e1;
-    border-radius:16px;
-    padding:20px 18px;
+    border-radius:18px;
+    padding:22px 18px;
     text-align:center;
     font-size:34px;
     font-weight:900;
     letter-spacing:.8px;
     color:#0f172a;
 }
-.info-rota-normal{
-    margin-top:16px;
-}
 .info-rota-normal h4{
-    margin:0 0 12px 0;
+    margin:0 0 10px 0;
     font-size:18px;
     color:#111827;
 }
 .moto-box{
-    margin-top:16px;
     padding:16px;
     border-radius:18px;
     background:#fff4ef;
@@ -365,34 +403,106 @@ body.modal-open{
     border:2px solid #ffd5c7;
     border-radius:14px;
     padding:16px;
-    font-size:26px;
+    font-size:24px;
     font-weight:900;
     color:#7c2d12;
     text-align:center;
 }
-.bloco-companheiros{
-    margin-top:18px;
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:18px;
-    padding:16px;
+.alerta-conflito-mesa{
+    padding:14px 16px;
+    border-radius:14px;
+    background:#fff1f2;
+    color:#b91c1c;
+    border:1px solid #fecdd3;
+    font-weight:900;
+    font-size:16px;
 }
-.bloco-companheiros h4{
-    margin:0 0 12px 0;
-    font-size:20px;
+.acoes-mesa{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+}
+.btn-acao-mesa{
+    border:none;
+    border-radius:16px;
+    padding:14px 22px;
+    color:#fff;
+    cursor:pointer;
+    font-weight:900;
+    font-size:17px;
+}
+.btn-acao-conferindo{
+    background:#f59e0b;
+}
+.btn-acao-finalizado{
+    background:#64748b;
+}
+.btn-acao-mesa:disabled{
+    opacity:.7;
+    cursor:not-allowed;
+}
+.status-finalizado-msg{
+    padding:16px;
+    border-radius:14px;
+    background:#e5e7eb;
+    color:#111827;
+    font-weight:900;
+    font-size:18px;
+}
+.feedback-status{
+    padding:12px 14px;
+    border-radius:12px;
+    font-weight:900;
+    font-size:15px;
+}
+.feedback-status.conferindo{
+    background:#fff7e6;
+    color:#92400e;
+    border:1px solid #f59e0b;
+}
+.feedback-status.finalizado{
+    background:#e5e7eb;
+    color:#111827;
+    border:1px solid #9ca3af;
+}
+.msg-vazia{
+    color:#6b7280;
+    font-size:18px;
+    text-align:center;
+    padding:26px 10px;
+    height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+
+/* LATERAL */
+.bloco-lateral{
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    border-radius:24px;
+    padding:18px;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+}
+.bloco-lateral h4{
+    margin:0 0 14px 0;
+    font-size:22px;
     color:#111827;
 }
 .lista-companheiros{
     display:flex;
     flex-direction:column;
     gap:10px;
+    overflow:hidden;
 }
 .item-companheiro{
     display:flex;
     align-items:center;
     justify-content:space-between;
     gap:14px;
-    border-radius:14px;
+    border-radius:16px;
     padding:14px 16px;
     border:1px solid #e5e7eb;
     background:#fff;
@@ -448,72 +558,32 @@ body.modal-open{
     background:#e5e7eb;
     color:#4b5563;
 }
-.acoes-mesa{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-    margin-top:16px;
-}
-.btn-acao-mesa{
-    border:none;
-    border-radius:14px;
-    padding:13px 18px;
+
+.cronometro-box{
+    background:#0f172a;
     color:#fff;
-    cursor:pointer;
+    border-radius:22px;
+    padding:18px;
+    box-shadow:0 10px 24px rgba(15,23,42,.18);
+}
+.cronometro-label{
+    font-size:13px;
+    opacity:.8;
+    margin-bottom:8px;
+    font-weight:700;
+}
+.cronometro-tempo{
+    font-size:42px;
     font-weight:900;
-    font-size:16px;
+    letter-spacing:1px;
 }
-.btn-acao-conferindo{
-    background:#f59e0b;
-}
-.btn-acao-finalizado{
-    background:#64748b;
-}
-.btn-acao-mesa:disabled{
-    opacity:.7;
-    cursor:not-allowed;
-}
-.status-finalizado-msg{
-    margin-top:16px;
-    padding:14px 16px;
-    border-radius:14px;
-    background:#e5e7eb;
-    color:#111827;
-    font-weight:900;
-}
-.feedback-status{
-    margin-top:14px;
-    padding:12px 14px;
-    border-radius:12px;
-    font-weight:900;
+.cronometro-rota{
+    margin-top:8px;
     font-size:15px;
+    opacity:.92;
+    line-height:1.3;
 }
-.feedback-status.conferindo{
-    background:#fff7e6;
-    color:#92400e;
-    border:1px solid #f59e0b;
-}
-.feedback-status.finalizado{
-    background:#e5e7eb;
-    color:#111827;
-    border:1px solid #9ca3af;
-}
-.alerta-conflito-mesa{
-    margin-top:14px;
-    padding:14px 16px;
-    border-radius:14px;
-    background:#fff1f2;
-    color:#b91c1c;
-    border:1px solid #fecdd3;
-    font-weight:900;
-    font-size:16px;
-}
-.msg-vazia{
-    color:#6b7280;
-    font-size:16px;
-    text-align:center;
-    padding:26px 10px;
-}
+
 .loading-overlay{
     position:fixed;
     inset:0;
@@ -553,39 +623,52 @@ body.modal-open{
     font-weight:900;
     color:#111827;
 }
-.cronometro-box{
-    margin-top:16px;
-    background:#0f172a;
-    color:#fff;
-    border-radius:18px;
-    padding:16px;
-    box-shadow:0 10px 24px rgba(15,23,42,.18);
-}
-.cronometro-label{
-    font-size:13px;
-    opacity:.8;
-    margin-bottom:8px;
-    font-weight:700;
-}
-.cronometro-tempo{
-    font-size:34px;
-    font-weight:900;
-    letter-spacing:1px;
-}
-.cronometro-rota{
-    margin-top:6px;
-    font-size:14px;
-    opacity:.9;
-}
 @keyframes spin{
     to{ transform:rotate(360deg); }
 }
+
+@media (max-width: 1180px){
+    .modal-card{
+        height:calc(100vh - 20px);
+        padding:14px;
+    }
+    .modal-conteudo{
+        grid-template-columns:1fr;
+    }
+    .busca-modal{
+        grid-template-columns:1fr 1fr;
+    }
+    .busca-modal input{
+        grid-column:1 / -1;
+    }
+}
 @media (max-width: 700px){
     .topo{ padding:18px 15px; }
-    .container{ padding:15px; }
-    .modal-card{ padding:16px; }
+    .topo h2{ font-size:24px; }
+    .container{ padding:14px; }
+    .modal{
+        padding:8px;
+    }
+    .modal-card{
+        height:calc(100vh - 16px);
+        border-radius:20px;
+        padding:12px;
+    }
     .modal-topo h3{ font-size:22px; }
-    .rota-super-destaque{ font-size:26px; }
+    .busca-modal{
+        grid-template-columns:1fr;
+    }
+    .btn-fechar{
+        width:44px;
+        height:44px;
+    }
+    .nome{ font-size:19px; }
+    .pacote-destaque{ font-size:24px; }
+    .rota-super-destaque{ font-size:24px; padding:18px 14px; }
+    .cronometro-tempo{ font-size:34px; }
+    .info-basica{
+        grid-template-columns:1fr;
+    }
     .item-companheiro{
         flex-direction:column;
         align-items:flex-start;
@@ -642,14 +725,27 @@ body.modal-open{
             <button type="button" class="btn-limpar-mesa" id="btnLimparMesa">Limpar mesa</button>
         </div>
 
-        <div id="resultadoMesa" class="resultado-mesa">
-            <div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>
-        </div>
+        <div class="modal-conteudo">
+            <div class="coluna-principal">
+                <div id="resultadoMesa" class="resultado-mesa">
+                    <div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>
+                </div>
+            </div>
 
-        <div id="cronometroMesa" class="cronometro-box" style="display:none;">
-            <div class="cronometro-label">TEMPO DE CONFERÊNCIA</div>
-            <div class="cronometro-tempo" id="cronometroTempo">00:00:00</div>
-            <div class="cronometro-rota" id="cronometroRota"></div>
+            <div class="coluna-lateral">
+                <div id="cronometroMesa" class="cronometro-box" style="display:none;">
+                    <div class="cronometro-label">TEMPO DE CONFERÊNCIA</div>
+                    <div class="cronometro-tempo" id="cronometroTempo">00:00:00</div>
+                    <div class="cronometro-rota" id="cronometroRota"></div>
+                </div>
+
+                <div class="bloco-lateral">
+                    <h4>Motoristas da mesma rota</h4>
+                    <div id="companheirosMesa" class="lista-companheiros">
+                        <div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -661,6 +757,7 @@ const modal = document.getElementById("modalMesa");
 const tituloMesa = document.getElementById("tituloMesa");
 const inputMesa = document.getElementById("inputMesa");
 const resultadoMesa = document.getElementById("resultadoMesa");
+const companheirosMesa = document.getElementById("companheirosMesa");
 const fecharModal = document.getElementById("fecharModal");
 const btnPesquisarMesa = document.getElementById("btnPesquisarMesa");
 const btnLimparMesa = document.getElementById("btnLimparMesa");
@@ -859,18 +956,16 @@ async function verificarConflitoMesa(rotaTexto){
     }
 }
 
-function montarCompanheirosDaRota(motorista){
+function montarCompanheirosDaRotaHtml(motorista){
     const todosDaRota = Object.values(DRIVERS).filter(item =>
         (item.cluster_text || "") === (motorista.cluster_text || "")
     );
 
-    if (todosDaRota.length <= 1) return "";
+    if (todosDaRota.length <= 1) {
+        return '<div class="msg-vazia" style="padding:10px 0;">Nenhum outro motorista nessa rota.</div>';
+    }
 
-    let html = `
-        <div class="bloco-companheiros">
-            <h4>Motoristas da mesma rota</h4>
-            <div class="lista-companheiros">
-    `;
+    let html = "";
 
     todosDaRota.forEach(item => {
         const finalizado = (item.status || "").toLowerCase() === "finalizado";
@@ -894,11 +989,6 @@ function montarCompanheirosDaRota(motorista){
         `;
     });
 
-    html += `
-            </div>
-        </div>
-    `;
-
     return html;
 }
 
@@ -907,6 +997,7 @@ async function renderResultadoMesa(idBuscado){
 
     if (!id) {
         resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>';
+        companheirosMesa.innerHTML = '<div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>';
         return;
     }
 
@@ -914,6 +1005,7 @@ async function renderResultadoMesa(idBuscado){
 
     if (!motorista) {
         resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista encontrado para o ID informado.</div>';
+        companheirosMesa.innerHTML = '<div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>';
         return;
     }
 
@@ -984,23 +1076,32 @@ async function renderResultadoMesa(idBuscado){
         ? `<div class="alerta-conflito-mesa">${escaparHtml(conflito.mensagem)}</div>`
         : "";
 
-    const companheiros = montarCompanheirosDaRota(motorista);
-
     resultadoMesa.innerHTML = `
-        <div class="titulo">Resultado encontrado</div>
-        <div class="linha"><strong>ID:</strong> ${escaparHtml(motorista.driver_id)}</div>
-        <div class="nome">${escaparHtml(motorista.driver_name)}</div>
-        <div class="linha"><strong>Rota:</strong> ${escaparHtml(motorista.cluster_text)}</div>
-        <div class="linha"><strong>Veículo:</strong> ${escaparHtml(motorista.vehicle_type)}</div>
-        <div class="linha"><strong>Status:</strong> <span id="statusMesaAtual">${escaparHtml(motorista.status)}</span></div>
+        <div class="resultado-wrap">
+            <div class="resultado-topo">
+                <div>
+                    <div class="titulo">Resultado encontrado</div>
+                    <div class="linha"><strong>ID:</strong> ${escaparHtml(motorista.driver_id)}</div>
+                    <div class="nome">${escaparHtml(motorista.driver_name)}</div>
+                </div>
+            </div>
 
-        ${totalPacotes}
-        ${blocoRotaNormal}
-        ${htmlClusters}
-        ${companheiros}
-        ${htmlConflito}
-        ${htmlAcoes}
+            <div class="info-basica">
+                <div class="linha"><strong>Rota:</strong> ${escaparHtml(motorista.cluster_text)}</div>
+                <div class="linha"><strong>Veículo:</strong> ${escaparHtml(motorista.vehicle_type)}</div>
+                <div class="linha"><strong>Status:</strong> <span id="statusMesaAtual">${escaparHtml(motorista.status)}</span></div>
+                <div class="linha"><strong>Companheiros na rota:</strong> ${escaparHtml(motorista.route_total || 1)}</div>
+            </div>
+
+            ${totalPacotes}
+            ${blocoRotaNormal}
+            ${htmlClusters}
+            ${htmlConflito}
+            ${htmlAcoes}
+        </div>
     `;
+
+    companheirosMesa.innerHTML = montarCompanheirosDaRotaHtml(motorista);
 }
 
 async function alterarStatusMesa(driverId, novoStatus){
@@ -1151,9 +1252,10 @@ botoesMesa.forEach(btn => {
 
 fecharModal.addEventListener("click", fecharMesa);
 
-modal.addEventListener("click", function(e){
-    if (e.target === modal) fecharMesa();
-});
+/* IMPORTANTE:
+   A TELA NÃO FECHA MAIS AO CLICAR FORA
+   E NEM NO ESC
+*/
 
 btnPesquisarMesa.addEventListener("click", async function(){
     const valor = inputMesa.value.trim();
@@ -1189,6 +1291,7 @@ btnLimparMesa.addEventListener("click", async function(){
     pararCronometroVisual();
     resultadoMesa.classList.remove("destacado-conferindo");
     resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>';
+    companheirosMesa.innerHTML = '<div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>';
 });
 
 inputMesa.addEventListener("keydown", async function(e){
@@ -1212,12 +1315,6 @@ inputMesa.addEventListener("keydown", async function(e){
         }
 
         await renderResultadoMesa(valor);
-    }
-});
-
-document.addEventListener("keydown", function(e){
-    if (e.key === "Escape" && modal.classList.contains("ativo")) {
-        fecharMesa();
     }
 });
 
