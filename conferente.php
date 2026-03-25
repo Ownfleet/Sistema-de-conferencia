@@ -141,6 +141,9 @@ foreach ($driversMap as $driver) {
     --warn-bg:#fff7ed;
     --bad:#dc2626;
     --bad-bg:#fff1f2;
+    --mesa:#2563eb;
+    --mesa-bg:#eff6ff;
+    --mesa-line:#93c5fd;
     --shadow-sm:0 10px 24px rgba(15,23,42,.06);
     --shadow-md:0 18px 38px rgba(15,23,42,.12);
     --radius:24px;
@@ -679,6 +682,12 @@ body.modal-open{
     box-shadow:0 0 0 3px rgba(34,197,94,.10);
 }
 
+.item-companheiro.mesa-atual{
+    background:var(--mesa-bg);
+    border-color:var(--mesa-line);
+    box-shadow:0 0 0 3px rgba(37,99,235,.10);
+}
+
 .item-companheiro .esq{
     display:flex;
     align-items:center;
@@ -699,6 +708,11 @@ body.modal-open{
 
 .luz.apagada{
     background:#9ca3af;
+}
+
+.luz.mesa{
+    background:#2563eb;
+    box-shadow:0 0 12px rgba(37,99,235,.9), 0 0 24px rgba(37,99,235,.45);
 }
 
 .nome-companheiro{
@@ -729,6 +743,11 @@ body.modal-open{
 .status-chip.finalizado{
     background:#e5e7eb;
     color:#4b5563;
+}
+
+.status-chip.mesa{
+    background:#dbeafe;
+    color:#1d4ed8;
 }
 
 .cronometro-box{
@@ -1177,10 +1196,22 @@ function montarCompanheirosDaRotaHtml(motorista){
     let html = "";
 
     todosDaRota.forEach(item => {
+        const ehMotoristaDaMesa = String(item.driver_id) === String(motorista.driver_id);
         const finalizado = (item.status || "").toLowerCase() === "finalizado";
-        const classe = finalizado ? "finalizado" : "pendente";
-        const luz = finalizado ? "apagada" : "acesa";
-        const statusTexto = finalizado ? "Já carregou" : "Falta carregar";
+
+        let classe = "pendente";
+        let luz = "acesa";
+        let statusTexto = "Falta carregar";
+
+        if (ehMotoristaDaMesa) {
+            classe = "mesa";
+            luz = "mesa";
+            statusTexto = "Motorista na sua mesa";
+        } else if (finalizado) {
+            classe = "finalizado";
+            luz = "apagada";
+            statusTexto = "Já carregou";
+        }
 
         html += `
             <div class="item-companheiro ${classe}">
