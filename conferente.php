@@ -3,6 +3,26 @@ require "db.php";
 
 $quantidadeMesas = 18;
 
+function parseMotoFormulaPhp(?string $formula): array {
+    $formula = trim((string)$formula);
+    $resultado = [];
+
+    if ($formula === "") {
+        return $resultado;
+    }
+
+    preg_match_all('/([A-Z]-\d+)\((\d+)\)/i', $formula, $matches, PREG_SET_ORDER);
+
+    foreach ($matches as $m) {
+        $resultado[] = [
+            "cluster_code" => trim((string)$m[1]),
+            "packages" => (int)$m[2]
+        ];
+    }
+
+    return $resultado;
+}
+
 $stmt = $pdo->query("
     SELECT
         d.id,
@@ -29,6 +49,8 @@ foreach ($rows as $r) {
     $driverDbId = $r["id"];
 
     if (!isset($driversMap[$driverDbId])) {
+        $motoItems = parseMotoFormulaPhp($r["moto_formula"] ?? "");
+
         $driversMap[$driverDbId] = [
             "id" => $r["id"],
             "driver_id" => $r["driver_id"],
@@ -38,6 +60,7 @@ foreach ($rows as $r) {
             "vehicle_type" => $r["vehicle_type"],
             "status" => $r["status"],
             "moto_formula" => $r["moto_formula"],
+            "moto_items" => $motoItems,
             "clusters" => []
         ];
     }
@@ -63,7 +86,7 @@ foreach ($driversMap as $driver) {
 
     $totaisPorRota[$rota]++;
 
-    if (($driver["status"] ?? "") !== "finalizado") {
+    if (mb_strtolower((string)($driver["status"] ?? "")) !== "finalizado") {
         $restantesPorRota[$rota]++;
     }
 }
@@ -99,59 +122,99 @@ foreach ($driversMap as $driver) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Painel Conferente</title>
 <style>
-*{
-    box-sizing:border-box;
+:root{
+    --shopee:#ee4d2d;
+    --shopee-2:#ff6a3d;
+    --shopee-dark:#c83f22;
+    --navy:#0f172a;
+    --navy-2:#16213e;
+    --bg:#f6f8fc;
+    --bg-soft:#eef2f7;
+    --card:#ffffff;
+    --line:#e5e7eb;
+    --line-soft:#edf1f6;
+    --text:#1f2937;
+    --muted:#667085;
+    --ok:#16a34a;
+    --ok-bg:#ecfdf3;
+    --warn:#f59e0b;
+    --warn-bg:#fff7ed;
+    --bad:#dc2626;
+    --bad-bg:#fff1f2;
+    --shadow-sm:0 10px 24px rgba(15,23,42,.06);
+    --shadow-md:0 18px 38px rgba(15,23,42,.12);
+    --radius:24px;
+    --radius-md:18px;
+    --radius-sm:14px;
 }
+
+*{ box-sizing:border-box; }
+
 html, body{
     height:100%;
 }
+
 body{
     margin:0;
     font-family:Arial,sans-serif;
-    background:linear-gradient(180deg,#f7f8fc 0%,#eef2f7 100%);
-    color:#1f2937;
+    background:
+        radial-gradient(circle at top left, #ffffff 0%, var(--bg) 38%, var(--bg-soft) 100%);
+    color:var(--text);
 }
+
 body.modal-open{
     overflow:hidden;
 }
+
 .topo{
-    background:linear-gradient(90deg,#8f3b2f 0%,#a04535 100%);
+    background:linear-gradient(90deg, #8f3b2f 0%, #a04535 100%);
     color:#fff;
     padding:20px 28px;
-    box-shadow:0 8px 24px rgba(143,59,47,.18);
+    box-shadow:0 10px 28px rgba(143,59,47,.20);
+    position:sticky;
+    top:0;
+    z-index:20;
 }
+
 .topo h2{
     margin:0;
     font-size:30px;
+    font-weight:900;
     letter-spacing:.2px;
 }
+
 .container{
     padding:20px;
 }
+
 .box-mesas{
-    background:#fff;
-    border-radius:24px;
-    padding:22px;
-    box-shadow:0 10px 32px rgba(15,23,42,.06);
-    border:1px solid #edf0f5;
+    background:linear-gradient(180deg,#ffffff 0%,#fbfcfe 100%);
+    border-radius:28px;
+    padding:24px;
+    box-shadow:var(--shadow-sm);
+    border:1px solid var(--line-soft);
 }
+
 .box-mesas h3{
     margin:0 0 18px 0;
-    font-size:22px;
-    color:#0f172a;
+    font-size:24px;
+    color:var(--navy);
+    font-weight:900;
 }
+
 .mesas-grid{
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(130px, 130px));
+    grid-template-columns:repeat(auto-fit, minmax(128px, 128px));
     gap:16px;
     justify-content:flex-start;
 }
+
 .btn-mesa{
-    width:130px;
-    height:130px;
+    width:128px;
+    height:128px;
     border:none;
-    border-radius:24px;
-    background:linear-gradient(145deg,#0f1b3d 0%, #15295c 100%);
+    border-radius:26px;
+    background:linear-gradient(145deg,#11204a 0%, #18316d 100%);
     color:#fff;
     cursor:pointer;
     font-weight:900;
@@ -162,123 +225,162 @@ body.modal-open{
     justify-content:center;
     text-align:center;
     padding:12px;
-    transition:all .22s ease;
+    transition:transform .20s ease, box-shadow .20s ease, filter .20s ease;
     box-shadow:
-        0 14px 28px rgba(15,27,61,.28),
+        0 16px 28px rgba(15,27,61,.26),
         inset 0 1px 0 rgba(255,255,255,.10),
-        inset 0 -4px 10px rgba(0,0,0,.18);
+        inset 0 -6px 12px rgba(0,0,0,.18);
     border:2px solid rgba(255,255,255,.08);
     position:relative;
     overflow:hidden;
 }
+
 .btn-mesa::before{
     content:"";
     position:absolute;
     inset:0;
-    background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0));
+    background:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,0));
     pointer-events:none;
 }
+
 .btn-mesa:hover{
     transform:translateY(-4px) scale(1.02);
     box-shadow:
-        0 18px 34px rgba(15,27,61,.34),
+        0 22px 36px rgba(15,27,61,.30),
         inset 0 1px 0 rgba(255,255,255,.12),
-        inset 0 -4px 10px rgba(0,0,0,.20);
+        inset 0 -6px 12px rgba(0,0,0,.20);
 }
+
 .btn-mesa:active{
     transform:translateY(-1px) scale(.99);
 }
+
 .btn-mesa.com-busca{
-    background:linear-gradient(145deg,#a04535 0%, #c5563d 100%);
+    background:linear-gradient(145deg,#d4583c 0%, #ee4d2d 100%);
     box-shadow:
-        0 14px 28px rgba(160,69,53,.30),
-        inset 0 1px 0 rgba(255,255,255,.12),
-        inset 0 -4px 10px rgba(0,0,0,.16);
+        0 16px 30px rgba(238,77,45,.28),
+        inset 0 1px 0 rgba(255,255,255,.14),
+        inset 0 -5px 10px rgba(0,0,0,.14);
 }
 
-/* MODAL TELA CHEIA */
+/* MODAL */
 .modal{
     position:fixed;
     inset:0;
-    background:rgba(15,23,42,.52);
+    background:rgba(15,23,42,.58);
+    backdrop-filter:blur(4px);
     display:none;
     z-index:9999;
     padding:14px;
 }
+
 .modal.ativo{
     display:block;
+    animation:fadeIn .18s ease;
 }
+
 .modal-card{
     width:100%;
     height:calc(100vh - 28px);
-    background:#ffffff;
-    border-radius:28px;
-    box-shadow:0 20px 60px rgba(15,23,42,.25);
+    background:linear-gradient(180deg,#ffffff 0%,#fbfcfe 100%);
+    border-radius:30px;
+    box-shadow:0 24px 70px rgba(15,23,42,.28);
     padding:18px;
     display:grid;
     grid-template-rows:auto auto 1fr;
     gap:14px;
     overflow:hidden;
+    border:1px solid rgba(255,255,255,.65);
 }
+
 .modal-topo{
     display:flex;
     justify-content:space-between;
     align-items:center;
     gap:12px;
 }
+
 .modal-topo h3{
     margin:0;
     font-size:28px;
-    color:#0f172a;
+    color:var(--navy);
+    font-weight:900;
 }
+
 .btn-fechar{
     border:none;
-    background:#0f172a;
+    background:linear-gradient(135deg,var(--navy) 0%, #09101f 100%);
     color:#fff;
-    width:48px;
-    height:48px;
+    width:50px;
+    height:50px;
     border-radius:16px;
     cursor:pointer;
-    font-size:22px;
+    font-size:24px;
     font-weight:bold;
-    flex:0 0 48px;
+    flex:0 0 50px;
+    box-shadow:0 10px 22px rgba(15,23,42,.22);
+    transition:transform .15s ease, filter .15s ease;
+}
+
+.btn-fechar:hover{
+    transform:translateY(-1px);
+    filter:brightness(1.05);
 }
 
 .busca-modal{
     display:grid;
-    grid-template-columns:minmax(280px, 1fr) 150px 160px;
+    grid-template-columns:minmax(300px, 1fr) 150px 160px;
     gap:12px;
     align-items:center;
 }
+
 .busca-modal input{
     width:100%;
     padding:16px 16px;
     border:1px solid #d7dce5;
-    border-radius:16px;
+    border-radius:18px;
     font-size:18px;
     min-width:0;
+    background:#fff;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.02);
 }
+
+.busca-modal input:focus{
+    outline:none;
+    border-color:#ffb39f;
+    box-shadow:0 0 0 4px rgba(238,77,45,.10);
+}
+
 .busca-modal button{
     border:none;
-    border-radius:16px;
+    border-radius:18px;
     padding:15px 18px;
     font-weight:900;
     cursor:pointer;
     color:#fff;
     font-size:16px;
     height:56px;
+    transition:transform .15s ease, filter .15s ease, box-shadow .15s ease;
+    box-shadow:0 10px 22px rgba(0,0,0,.10);
 }
+
+.busca-modal button:hover{
+    transform:translateY(-1px);
+    filter:brightness(1.03);
+}
+
 .btn-localizar{
-    background:linear-gradient(90deg,#ee4d2d 0%,#ff6a3d 100%);
+    background:linear-gradient(90deg,var(--shopee) 0%,var(--shopee-2) 100%);
 }
+
 .btn-limpar-mesa{
-    background:#64748b;
+    background:linear-gradient(135deg,#6b7a90 0%, #5a687d 100%);
 }
 
 .modal-conteudo{
     min-height:0;
     display:grid;
-    grid-template-columns:1.25fr .95fr;
+    grid-template-columns:1.2fr .95fr;
     gap:16px;
     overflow:hidden;
 }
@@ -293,33 +395,39 @@ body.modal-open{
 
 .resultado-mesa{
     flex:1 1 auto;
-    border:1px solid #e5e7eb;
-    border-radius:24px;
+    border:1px solid var(--line);
+    border-radius:26px;
     padding:18px;
-    background:#f8fafc;
-    overflow:hidden;
+    background:linear-gradient(180deg,#f8fafc 0%,#f6f9fc 100%);
+    overflow:auto;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
 }
+
 .resultado-mesa.destacado-conferindo{
-    border:2px solid #f59e0b;
-    box-shadow:0 0 0 4px rgba(245,158,11,0.10);
+    border:2px solid var(--warn);
+    box-shadow:0 0 0 4px rgba(245,158,11,0.12);
 }
+
 .resultado-wrap{
-    height:100%;
     display:flex;
     flex-direction:column;
     gap:14px;
 }
+
 .resultado-topo{
     display:grid;
-    grid-template-columns:1fr auto;
-    gap:14px;
+    grid-template-columns:1fr;
+    gap:10px;
     align-items:start;
 }
+
 .resultado-mesa .titulo{
     font-size:15px;
     color:#6b7280;
     margin-bottom:4px;
+    font-weight:700;
 }
+
 .nome{
     font-size:22px;
     font-weight:900;
@@ -327,176 +435,222 @@ body.modal-open{
     color:#111827;
     line-height:1.15;
 }
+
 .info-basica{
     display:grid;
     grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:10px 14px;
 }
+
 .linha{
     color:#374151;
     font-size:16px;
+    line-height:1.35;
 }
+
 .pacote-destaque{
     background:linear-gradient(90deg,#fff4ef 0%,#fff 100%);
     border:2px solid #ffd5c7;
     color:#9a3412;
-    border-radius:18px;
+    border-radius:20px;
     padding:18px 20px;
-    font-size:30px;
+    font-size:clamp(22px, 2vw, 32px);
     font-weight:900;
     text-align:center;
     letter-spacing:.4px;
+    box-shadow:0 8px 20px rgba(238,77,45,.06);
 }
+
 .rota-super-destaque{
     background:#fff;
-    border:2px solid #cbd5e1;
-    border-radius:18px;
-    padding:22px 18px;
+    border:2px solid #cfd8e3;
+    border-radius:20px;
+    padding:20px 18px;
     text-align:center;
-    font-size:34px;
+    font-size:clamp(22px, 2vw, 34px);
     font-weight:900;
     letter-spacing:.8px;
     color:#0f172a;
+    word-break:break-word;
+    box-shadow:0 8px 20px rgba(15,23,42,.04);
 }
+
 .info-rota-normal h4{
     margin:0 0 10px 0;
     font-size:18px;
     color:#111827;
+    font-weight:900;
 }
+
 .moto-box{
     padding:16px;
-    border-radius:18px;
-    background:#fff4ef;
+    border-radius:20px;
+    background:linear-gradient(180deg,#fff6f1 0%,#fff2eb 100%);
     border:1px solid #ffd5c7;
 }
+
 .moto-titulo{
     font-weight:900;
     color:#7c2d12;
     margin-bottom:12px;
     font-size:18px;
 }
+
 .moto-lista{
-    display:flex;
-    flex-direction:column;
+    display:grid;
+    grid-template-columns:1fr;
     gap:10px;
 }
+
 .moto-item{
     background:#fff;
     border:1px solid #ffd5c7;
-    border-radius:14px;
+    border-radius:16px;
     padding:14px 16px;
     font-weight:900;
     color:#111827;
-    font-size:19px;
+    font-size:clamp(16px, 1.6vw, 19px);
+    line-height:1.35;
+    word-break:break-word;
+    box-shadow:0 6px 14px rgba(238,77,45,.04);
 }
+
 .moto-item .numero{
-    font-size:30px;
+    font-size:clamp(24px, 2vw, 30px);
     color:#111827;
 }
+
 .moto-item .cluster{
-    font-size:24px;
+    font-size:clamp(22px, 1.9vw, 24px);
     color:#7c2d12;
 }
+
 .moto-total{
     margin-top:12px;
     background:#fff;
     border:2px solid #ffd5c7;
-    border-radius:14px;
+    border-radius:16px;
     padding:16px;
-    font-size:24px;
+    font-size:clamp(20px, 1.8vw, 24px);
     font-weight:900;
     color:#7c2d12;
     text-align:center;
 }
+
 .alerta-conflito-mesa{
     padding:14px 16px;
-    border-radius:14px;
-    background:#fff1f2;
+    border-radius:16px;
+    background:var(--bad-bg);
     color:#b91c1c;
     border:1px solid #fecdd3;
     font-weight:900;
     font-size:16px;
+    line-height:1.4;
 }
+
 .acoes-mesa{
-    display:flex;
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 220px));
     gap:12px;
-    flex-wrap:wrap;
+    align-items:stretch;
 }
+
 .btn-acao-mesa{
     border:none;
     border-radius:16px;
-    padding:14px 22px;
+    padding:14px 18px;
     color:#fff;
     cursor:pointer;
     font-weight:900;
     font-size:17px;
+    min-height:56px;
+    transition:transform .15s ease, filter .15s ease, box-shadow .15s ease;
+    box-shadow:0 10px 22px rgba(0,0,0,.10);
 }
+
+.btn-acao-mesa:hover{
+    transform:translateY(-1px);
+    filter:brightness(1.03);
+}
+
 .btn-acao-conferindo{
-    background:#f59e0b;
+    background:linear-gradient(135deg,#f59e0b 0%, #fbbf24 100%);
 }
+
 .btn-acao-finalizado{
-    background:#64748b;
+    background:linear-gradient(135deg,#64748b 0%, #475569 100%);
 }
+
 .btn-acao-mesa:disabled{
     opacity:.7;
     cursor:not-allowed;
 }
+
 .status-finalizado-msg{
     padding:16px;
-    border-radius:14px;
+    border-radius:16px;
     background:#e5e7eb;
     color:#111827;
     font-weight:900;
     font-size:18px;
+    line-height:1.4;
 }
+
 .feedback-status{
     padding:12px 14px;
-    border-radius:12px;
+    border-radius:14px;
     font-weight:900;
     font-size:15px;
 }
+
 .feedback-status.conferindo{
     background:#fff7e6;
     color:#92400e;
     border:1px solid #f59e0b;
 }
+
 .feedback-status.finalizado{
-    background:#e5e7eb;
+    background:#eef2f7;
     color:#111827;
     border:1px solid #9ca3af;
 }
+
 .msg-vazia{
     color:#6b7280;
     font-size:18px;
     text-align:center;
     padding:26px 10px;
-    height:100%;
+    min-height:140px;
     display:flex;
     align-items:center;
     justify-content:center;
+    line-height:1.4;
 }
 
-/* LATERAL */
 .bloco-lateral{
-    background:#f8fafc;
-    border:1px solid #e5e7eb;
-    border-radius:24px;
+    background:linear-gradient(180deg,#f8fafc 0%,#f6f9fc 100%);
+    border:1px solid var(--line);
+    border-radius:26px;
     padding:18px;
     display:flex;
     flex-direction:column;
     min-height:0;
+    overflow:auto;
 }
+
 .bloco-lateral h4{
     margin:0 0 14px 0;
     font-size:22px;
     color:#111827;
+    font-weight:900;
 }
+
 .lista-companheiros{
     display:flex;
     flex-direction:column;
     gap:10px;
-    overflow:hidden;
 }
+
 .item-companheiro{
     display:flex;
     align-items:center;
@@ -506,43 +660,59 @@ body.modal-open{
     padding:14px 16px;
     border:1px solid #e5e7eb;
     background:#fff;
+    transition:transform .15s ease, box-shadow .15s ease;
 }
+
+.item-companheiro:hover{
+    transform:translateY(-1px);
+    box-shadow:0 10px 18px rgba(15,23,42,.06);
+}
+
 .item-companheiro.finalizado{
     background:#eef2f7;
     color:#64748b;
 }
+
 .item-companheiro.pendente{
     background:#f0fdf4;
     border-color:#86efac;
-    box-shadow:0 0 0 3px rgba(34,197,94,.12);
+    box-shadow:0 0 0 3px rgba(34,197,94,.10);
 }
+
 .item-companheiro .esq{
     display:flex;
     align-items:center;
     gap:12px;
 }
+
 .luz{
     width:16px;
     height:16px;
     border-radius:50%;
     flex:0 0 16px;
 }
+
 .luz.acesa{
     background:#22c55e;
     box-shadow:0 0 12px rgba(34,197,94,.9), 0 0 24px rgba(34,197,94,.45);
 }
+
 .luz.apagada{
     background:#9ca3af;
 }
+
 .nome-companheiro{
     font-weight:900;
     font-size:17px;
     color:#111827;
+    line-height:1.3;
 }
+
 .item-companheiro.finalizado .nome-companheiro{
     color:#6b7280;
     text-decoration:line-through;
 }
+
 .status-chip{
     padding:8px 12px;
     border-radius:999px;
@@ -550,38 +720,46 @@ body.modal-open{
     font-size:13px;
     white-space:nowrap;
 }
+
 .status-chip.pendente{
     background:#dcfce7;
     color:#166534;
 }
+
 .status-chip.finalizado{
     background:#e5e7eb;
     color:#4b5563;
 }
 
 .cronometro-box{
-    background:#0f172a;
+    background:linear-gradient(135deg,#0f172a 0%,#16213e 100%);
     color:#fff;
-    border-radius:22px;
+    border-radius:24px;
     padding:18px;
-    box-shadow:0 10px 24px rgba(15,23,42,.18);
+    box-shadow:0 14px 28px rgba(15,23,42,.18);
+    border:1px solid rgba(255,255,255,.06);
 }
+
 .cronometro-label{
     font-size:13px;
-    opacity:.8;
+    opacity:.82;
     margin-bottom:8px;
     font-weight:700;
+    letter-spacing:.3px;
 }
+
 .cronometro-tempo{
-    font-size:42px;
+    font-size:clamp(30px, 3vw, 42px);
     font-weight:900;
     letter-spacing:1px;
 }
+
 .cronometro-rota{
     margin-top:8px;
     font-size:15px;
     opacity:.92;
-    line-height:1.3;
+    line-height:1.35;
+    word-break:break-word;
 }
 
 .loading-overlay{
@@ -594,14 +772,16 @@ body.modal-open{
     z-index:10000;
     transition:opacity .2s ease;
 }
+
 .loading-overlay.hidden{
     opacity:0;
     pointer-events:none;
 }
+
 .loading-box{
     background:#fff;
     border:1px solid #eee;
-    border-radius:18px;
+    border-radius:20px;
     padding:24px 28px;
     box-shadow:0 15px 40px rgba(0,0,0,0.12);
     display:flex;
@@ -610,30 +790,41 @@ body.modal-open{
     gap:14px;
     min-width:220px;
 }
+
 .spinner{
-    width:44px;
-    height:44px;
+    width:46px;
+    height:46px;
     border:4px solid #f3f4f6;
-    border-top-color:#ee4d2d;
+    border-top-color:var(--shopee);
     border-radius:50%;
     animation:spin 1s linear infinite;
 }
+
 .loading-text{
     font-size:16px;
     font-weight:900;
     color:#111827;
 }
+
 @keyframes spin{
     to{ transform:rotate(360deg); }
 }
+@keyframes fadeIn{
+    from{ opacity:0; }
+    to{ opacity:1; }
+}
 
-@media (max-width: 1180px){
+@media (max-width: 1220px){
     .modal-card{
         height:calc(100vh - 20px);
         padding:14px;
     }
     .modal-conteudo{
         grid-template-columns:1fr;
+    }
+    .coluna-principal,
+    .coluna-lateral{
+        overflow:auto;
     }
     .busca-modal{
         grid-template-columns:1fr 1fr;
@@ -642,31 +833,39 @@ body.modal-open{
         grid-column:1 / -1;
     }
 }
-@media (max-width: 700px){
-    .topo{ padding:18px 15px; }
-    .topo h2{ font-size:24px; }
-    .container{ padding:14px; }
+
+@media (max-width: 760px){
+    .topo{
+        padding:18px 16px;
+    }
+    .topo h2{
+        font-size:24px;
+    }
+    .container{
+        padding:14px;
+    }
     .modal{
         padding:8px;
     }
     .modal-card{
         height:calc(100vh - 16px);
-        border-radius:20px;
+        border-radius:22px;
         padding:12px;
     }
-    .modal-topo h3{ font-size:22px; }
+    .modal-topo h3{
+        font-size:22px;
+    }
     .busca-modal{
         grid-template-columns:1fr;
     }
-    .btn-fechar{
-        width:44px;
-        height:44px;
+    .resultado-mesa,
+    .bloco-lateral{
+        padding:14px;
     }
-    .nome{ font-size:19px; }
-    .pacote-destaque{ font-size:24px; }
-    .rota-super-destaque{ font-size:24px; padding:18px 14px; }
-    .cronometro-tempo{ font-size:34px; }
     .info-basica{
+        grid-template-columns:1fr;
+    }
+    .acoes-mesa{
         grid-template-columns:1fr;
     }
     .item-companheiro{
@@ -674,12 +873,12 @@ body.modal-open{
         align-items:flex-start;
     }
     .mesas-grid{
-        grid-template-columns:repeat(auto-fit, minmax(110px, 110px));
+        grid-template-columns:repeat(auto-fit, minmax(108px, 108px));
         gap:12px;
     }
     .btn-mesa{
-        width:110px;
-        height:110px;
+        width:108px;
+        height:108px;
         font-size:18px;
         border-radius:20px;
     }
@@ -742,7 +941,7 @@ body.modal-open{
                 <div class="bloco-lateral">
                     <h4>Motoristas da mesma rota</h4>
                     <div id="companheirosMesa" class="lista-companheiros">
-                        <div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>
+                        <div class="msg-vazia" style="min-height:auto; padding:10px 0;">Nenhuma rota carregada.</div>
                     </div>
                 </div>
             </div>
@@ -956,13 +1155,23 @@ async function verificarConflitoMesa(rotaTexto){
     }
 }
 
+function obterMotoItemsIndividuais(motorista){
+    const formulaItems = Array.isArray(motorista.moto_items) ? motorista.moto_items : [];
+    if (formulaItems.length > 0) {
+        return formulaItems;
+    }
+
+    const clusters = Array.isArray(motorista.clusters) ? motorista.clusters : [];
+    return clusters;
+}
+
 function montarCompanheirosDaRotaHtml(motorista){
     const todosDaRota = Object.values(DRIVERS).filter(item =>
         (item.cluster_text || "") === (motorista.cluster_text || "")
     );
 
     if (todosDaRota.length <= 1) {
-        return '<div class="msg-vazia" style="padding:10px 0;">Nenhum outro motorista nessa rota.</div>';
+        return '<div class="msg-vazia" style="min-height:auto; padding:10px 0;">Nenhum outro motorista nessa rota.</div>';
     }
 
     let html = "";
@@ -997,7 +1206,7 @@ async function renderResultadoMesa(idBuscado){
 
     if (!id) {
         resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>';
-        companheirosMesa.innerHTML = '<div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>';
+        companheirosMesa.innerHTML = '<div class="msg-vazia" style="min-height:auto; padding:10px 0;">Nenhuma rota carregada.</div>';
         return;
     }
 
@@ -1005,20 +1214,21 @@ async function renderResultadoMesa(idBuscado){
 
     if (!motorista) {
         resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista encontrado para o ID informado.</div>';
-        companheirosMesa.innerHTML = '<div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>';
+        companheirosMesa.innerHTML = '<div class="msg-vazia" style="min-height:auto; padding:10px 0;">Nenhuma rota carregada.</div>';
         return;
     }
 
-    const clusters = Array.isArray(motorista.clusters) ? motorista.clusters : [];
-    let htmlClusters = "";
     const ehMoto = (motorista.vehicle_type || "").toUpperCase() === "MOTO";
+    const motoItems = obterMotoItemsIndividuais(motorista);
 
-    if (ehMoto && clusters.length > 0) {
+    let htmlClusters = "";
+
+    if (ehMoto && motoItems.length > 0) {
         htmlClusters += '<div class="moto-box">';
         htmlClusters += '<div class="moto-titulo">O QUE PASSAR PARA ESTE MOTORISTA</div>';
         htmlClusters += '<div class="moto-lista">';
 
-        clusters.forEach(c => {
+        motoItems.forEach(c => {
             const packages = parseInt(c.packages || 0, 10);
 
             if (packages > 0) {
@@ -1252,10 +1462,7 @@ botoesMesa.forEach(btn => {
 
 fecharModal.addEventListener("click", fecharMesa);
 
-/* IMPORTANTE:
-   A TELA NÃO FECHA MAIS AO CLICAR FORA
-   E NEM NO ESC
-*/
+/* não fecha ao clicar fora nem no esc */
 
 btnPesquisarMesa.addEventListener("click", async function(){
     const valor = inputMesa.value.trim();
@@ -1291,7 +1498,7 @@ btnLimparMesa.addEventListener("click", async function(){
     pararCronometroVisual();
     resultadoMesa.classList.remove("destacado-conferindo");
     resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista pesquisado nesta mesa.</div>';
-    companheirosMesa.innerHTML = '<div class="msg-vazia" style="padding:10px 0;">Nenhuma rota carregada.</div>';
+    companheirosMesa.innerHTML = '<div class="msg-vazia" style="min-height:auto; padding:10px 0;">Nenhuma rota carregada.</div>';
 });
 
 inputMesa.addEventListener("keydown", async function(e){
