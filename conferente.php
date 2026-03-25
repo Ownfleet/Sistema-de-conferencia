@@ -1,7 +1,7 @@
 <?php
 require "db.php";
 
-$quantidadeMesas = 18;
+$quantidadeMesas = 24;
 
 function parseMotoFormulaPhp(?string $formula): array {
     $formula = trim((string)$formula);
