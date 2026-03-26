@@ -1204,7 +1204,7 @@ function montarCompanheirosDaRotaHtml(motorista){
         let statusTexto = "Falta carregar";
 
         if (ehMotoristaDaMesa) {
-            classe = "mesa";
+            classe = "mesa-atual";
             luz = "mesa";
             statusTexto = "Motorista na sua mesa";
         } else if (finalizado) {
@@ -1222,7 +1222,7 @@ function montarCompanheirosDaRotaHtml(motorista){
                         <div>ID: ${escaparHtml(item.driver_id)} • ${escaparHtml(item.vehicle_type || "")}</div>
                     </div>
                 </div>
-                <div class="status-chip ${classe}">
+                <div class="status-chip ${ehMotoristaDaMesa ? "mesa" : classe}">
                     ${statusTexto}
                 </div>
             </div>
