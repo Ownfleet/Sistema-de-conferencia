@@ -19,6 +19,7 @@ if (
 
 function normalizarCabecalho(string $texto): string {
     $texto = trim(mb_strtolower($texto, 'UTF-8'));
+    $texto = preg_replace('/^\xEF\xBB\xBF/', '', $texto);
     $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
     $texto = preg_replace('/[^a-z0-9]+/', '_', $texto);
     return trim($texto, '_');
@@ -147,6 +148,25 @@ function normalizarRotaComparacao(string $rota): string {
     return $rota;
 }
 
+function tabelaExiste(PDO $pdo, string $tableName): bool {
+    $stmt = $pdo->prepare("
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+        )
+    ");
+    $stmt->execute([":table_name" => $tableName]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function deletarSeExistir(PDO $pdo, string $tableName): void {
+    if (tabelaExiste($pdo, $tableName)) {
+        $pdo->exec('DELETE FROM "' . $tableName . '"');
+    }
+}
+
 $arquivoNormal = $_FILES["arquivo_normal"]["tmp_name"];
 $arquivoMoto = $_FILES["arquivo_moto"]["tmp_name"];
 
@@ -164,15 +184,17 @@ if ($handleNormal === false || $handleMoto === false) {
 try {
     $pdo->beginTransaction();
 
-    // limpa tudo uma única vez
-    $pdo->exec("DELETE FROM driver_clusters");
-    $pdo->exec("DELETE FROM drivers");
-    $pdo->exec("UPDATE imports SET is_active = false WHERE is_active = true");
-    $pdo->exec("DELETE FROM mesa_controle");
-    $pdo->exec("DELETE FROM mesas_controle");
-    $pdo->exec("DELETE FROM mesa_tempos");
+    // Limpeza segura
+    deletarSeExistir($pdo, "driver_clusters");
+    deletarSeExistir($pdo, "drivers");
+    if (tabelaExiste($pdo, "imports")) {
+        $pdo->exec("UPDATE imports SET is_active = false WHERE is_active = true");
+    }
+    deletarSeExistir($pdo, "mesa_controle");
+    deletarSeExistir($pdo, "mesas_controle");
+    deletarSeExistir($pdo, "mesa_tempos");
 
-    // cria um único import ativo
+    // Cria um único import ativo
     $stmtImport = $pdo->prepare("
         INSERT INTO imports (import_type, imported_by, is_active, created_at)
         VALUES ('normal', ?, true, NOW())
@@ -226,10 +248,10 @@ try {
     $mapaNormal = mapearCabecalhos($headerNormal);
 
     while (($linha = fgetcsv($handleNormal, 0, ",")) !== false) {
-        $driverId = pegarValor($linha, $mapaNormal, ["driver_id", "id_motorista", "id"]);
+        $driverId   = pegarValor($linha, $mapaNormal, ["driver_id", "id_motorista", "id"]);
         $driverName = pegarValor($linha, $mapaNormal, ["driver_name", "nome_motorista", "motorista", "nome"]);
         $clusterRaw = pegarValor($linha, $mapaNormal, ["cluster", "cluster_text", "rota", "aglomerado"]);
-        $vehicle = pegarValor($linha, $mapaNormal, ["vehicle_type", "tipo_veiculo", "veiculo"], "PASSEIO");
+        $vehicle    = strtoupper(pegarValor($linha, $mapaNormal, ["vehicle_type", "tipo_veiculo", "veiculo"], "PASSEIO"));
 
         if ($driverId === "" || $driverName === "" || $clusterRaw === "") {
             continue;
@@ -273,13 +295,12 @@ try {
     }
 
     $mapaMoto = mapearCabecalhos($headerMoto);
-
     $motosImportadas = [];
 
     while (($linha = fgetcsv($handleMoto, 0, ",")) !== false) {
-        $driverId = pegarValor($linha, $mapaMoto, ["id", "driver_id", "id_motorista"]);
-        $driverName = pegarValor($linha, $mapaMoto, ["nome", "nome_do_motorista", "driver_name", "nome_motorista"]);
-        $clusterBruto = pegarValor($linha, $mapaMoto, ["cluster"]);
+        $driverId    = pegarValor($linha, $mapaMoto, ["id", "driver_id", "id_motorista"]);
+        $driverName  = pegarValor($linha, $mapaMoto, ["nome", "nome_do_motorista", "driver_name", "nome_motorista"]);
+        $clusterBruto = pegarValor($linha, $mapaMoto, ["cluster", "cluster_text", "rota"]);
         $motoFormula = pegarValor($linha, $mapaMoto, ["contem_formula", "moto_formula", "formula_moto"], "");
         $vehicleType = "MOTO";
 
@@ -289,8 +310,15 @@ try {
 
         $parsedMotoCluster = parseClusterNormal($clusterBruto);
         $clusterText = $parsedMotoCluster["cluster_text"];
-
         $clustersMoto = parseMotoFormula($motoFormula);
+
+        // Se não veio fórmula mas veio /qtd, tenta usar cluster único
+        if (count($clustersMoto) === 0 && $clusterText !== "" && (int)$parsedMotoCluster["packages_total"] > 0) {
+            $clustersMoto[] = [
+                "cluster_code" => $clusterText,
+                "packages" => (int)$parsedMotoCluster["packages_total"]
+            ];
+        }
 
         $motosImportadas[] = [
             "driver_id" => $driverId,
@@ -322,6 +350,7 @@ try {
         $quantidadeNaMesmaRota = (int)($contagemPorRota[$rotaKey] ?? 1);
 
         $clustersMotoAjustados = [];
+
         foreach ($moto["clusters_moto"] as $clusterItem) {
             $clusterCode = trim((string)($clusterItem["cluster_code"] ?? ""));
             $packagesOriginal = (int)($clusterItem["packages"] ?? 0);
