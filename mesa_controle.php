@@ -19,12 +19,30 @@ function limparTexto($valor): string {
 
 function statusMesaValido(string $status): string {
     $status = mb_strtolower(trim($status), "UTF-8");
-
     if (in_array($status, ["pesquisado", "conferindo"], true)) {
         return $status;
     }
-
     return "pesquisado";
+}
+
+function parseMotoFormulaPhp(?string $formula): array {
+    $formula = trim((string)$formula);
+    $resultado = [];
+
+    if ($formula === "") {
+        return $resultado;
+    }
+
+    preg_match_all('/([A-Z]-\d+)\((\d+)\)/i', $formula, $matches, PREG_SET_ORDER);
+
+    foreach ($matches as $m) {
+        $resultado[] = [
+            "cluster_code" => trim((string)$m[1]),
+            "packages" => (int)$m[2]
+        ];
+    }
+
+    return $resultado;
 }
 
 function buscarMesaPorNumero(PDO $pdo, string $mesa): ?array {
@@ -139,6 +157,101 @@ function upsertMesaControle(
     ]);
 }
 
+function buscarDriverEstruturado(PDO $pdo, string $driverId): ?array {
+    $stmt = $pdo->prepare("
+        SELECT
+            d.id,
+            d.driver_id,
+            d.driver_name,
+            d.cluster_text,
+            d.packages_total,
+            d.vehicle_type,
+            d.status,
+            d.moto_formula,
+            dc.cluster_code,
+            dc.packages AS cluster_packages,
+            dc.sort_order
+        FROM drivers d
+        LEFT JOIN driver_clusters dc ON dc.driver_ref = d.id
+        WHERE d.active = true
+          AND d.driver_id = :driver_id
+        ORDER BY dc.sort_order ASC, dc.id ASC
+    ");
+    $stmt->execute([":driver_id" => $driverId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$rows) {
+        return null;
+    }
+
+    $driver = [
+        "id" => $rows[0]["id"],
+        "driver_id" => $rows[0]["driver_id"],
+        "driver_name" => $rows[0]["driver_name"],
+        "cluster_text" => $rows[0]["cluster_text"],
+        "packages_total" => (int)$rows[0]["packages_total"],
+        "vehicle_type" => $rows[0]["vehicle_type"],
+        "status" => $rows[0]["status"],
+        "moto_formula" => $rows[0]["moto_formula"],
+        "moto_items" => parseMotoFormulaPhp($rows[0]["moto_formula"] ?? ""),
+        "clusters" => []
+    ];
+
+    foreach ($rows as $row) {
+        if (!empty($row["cluster_code"])) {
+            $driver["clusters"][] = [
+                "cluster_code" => $row["cluster_code"],
+                "packages" => (int)$row["cluster_packages"],
+                "sort_order" => (int)$row["sort_order"]
+            ];
+        }
+    }
+
+    return $driver;
+}
+
+function buscarCompanheirosDaRota(PDO $pdo, string $rotaTexto): array {
+    $stmt = $pdo->prepare("
+        SELECT
+            d.id,
+            d.driver_id,
+            d.driver_name,
+            d.cluster_text,
+            d.packages_total,
+            d.vehicle_type,
+            d.status,
+            mc.mesa AS mesa_atual,
+            mc.status_mesa,
+            mc.updated_at AS mesa_updated_at
+        FROM drivers d
+        LEFT JOIN mesas_controle mc ON mc.driver_id = d.driver_id
+        WHERE d.active = true
+          AND d.cluster_text = :rota_texto
+        ORDER BY d.driver_name ASC
+    ");
+    $stmt->execute([":rota_texto" => $rotaTexto]);
+
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $companheiros = [];
+
+    foreach ($rows as $row) {
+        $companheiros[] = [
+            "id" => $row["id"],
+            "driver_id" => $row["driver_id"],
+            "driver_name" => $row["driver_name"],
+            "cluster_text" => $row["cluster_text"],
+            "packages_total" => (int)$row["packages_total"],
+            "vehicle_type" => $row["vehicle_type"],
+            "status" => $row["status"],
+            "mesa_atual" => $row["mesa_atual"],
+            "status_mesa" => $row["status_mesa"],
+            "mesa_updated_at" => $row["mesa_updated_at"]
+        ];
+    }
+
+    return $companheiros;
+}
+
 try {
     if ($action === "") {
         responder([
@@ -147,9 +260,6 @@ try {
         ], 400);
     }
 
-    /* =========================================
-       SALVAR PESQUISA DA MESA
-    ========================================= */
     if ($action === "save_search") {
         $mesa = limparTexto($_POST["mesa"] ?? "");
         $driverDbId = limparTexto($_POST["driver_db_id"] ?? "");
@@ -172,18 +282,13 @@ try {
             "pesquisado"
         );
 
-        $mesaAtual = buscarMesaPorNumero($pdo, $mesa);
-
         responder([
             "ok" => true,
             "mensagem" => "Pesquisa salva na mesa com sucesso.",
-            "mesa" => $mesaAtual
+            "mesa" => buscarMesaPorNumero($pdo, $mesa)
         ]);
     }
 
-    /* =========================================
-       MARCAR MESA COMO CONFERINDO
-    ========================================= */
     if ($action === "set_conferindo") {
         $mesa = limparTexto($_POST["mesa"] ?? "");
         $driverDbId = limparTexto($_POST["driver_db_id"] ?? "");
@@ -220,20 +325,14 @@ try {
             "conferindo"
         );
 
-        $mesaAtual = buscarMesaPorNumero($pdo, $mesa);
-        $mesmasRotas = buscarMesasMesmaRota($pdo, $rotaTexto);
-
         responder([
             "ok" => true,
             "mensagem" => "Mesa marcada como conferindo.",
-            "mesa" => $mesaAtual,
-            "mesas_mesma_rota" => $mesmasRotas
+            "mesa" => buscarMesaPorNumero($pdo, $mesa),
+            "mesas_mesma_rota" => buscarMesasMesmaRota($pdo, $rotaTexto)
         ]);
     }
 
-    /* =========================================
-       CHECAR CONFLITO DE ROTA
-    ========================================= */
     if ($action === "check_conflict") {
         $mesa = limparTexto($_GET["mesa"] ?? $_POST["mesa"] ?? "");
         $rotaTexto = limparTexto($_GET["rota_texto"] ?? $_POST["rota_texto"] ?? "");
@@ -269,9 +368,6 @@ try {
         ]);
     }
 
-    /* =========================================
-       LIMPAR MESA
-    ========================================= */
     if ($action === "clear") {
         $mesa = limparTexto($_POST["mesa"] ?? $_GET["mesa"] ?? "");
 
@@ -297,9 +393,6 @@ try {
         ]);
     }
 
-    /* =========================================
-       STATUS ATUAL DE UMA MESA
-    ========================================= */
     if ($action === "get_mesa") {
         $mesa = limparTexto($_GET["mesa"] ?? $_POST["mesa"] ?? "");
 
@@ -319,9 +412,6 @@ try {
         ]);
     }
 
-    /* =========================================
-       LISTAR MESAS DA MESMA ROTA
-    ========================================= */
     if ($action === "route_watch") {
         $rotaTexto = limparTexto($_GET["rota_texto"] ?? $_POST["rota_texto"] ?? "");
 
@@ -332,12 +422,60 @@ try {
             ], 400);
         }
 
-        $mesmasRotas = buscarMesasMesmaRota($pdo, $rotaTexto);
-
         responder([
             "ok" => true,
             "rota_texto" => $rotaTexto,
-            "mesas" => $mesmasRotas
+            "mesas" => buscarMesasMesmaRota($pdo, $rotaTexto)
+        ]);
+    }
+
+    if ($action === "status_live") {
+        $mesa = limparTexto($_GET["mesa"] ?? $_POST["mesa"] ?? "");
+        $driverId = limparTexto($_GET["driver_id"] ?? $_POST["driver_id"] ?? "");
+
+        if ($mesa === "" || $driverId === "") {
+            responder([
+                "ok" => false,
+                "erro" => "Mesa ou ID do motorista inválido."
+            ], 400);
+        }
+
+        $driver = buscarDriverEstruturado($pdo, $driverId);
+
+        if (!$driver) {
+            responder([
+                "ok" => true,
+                "found" => false,
+                "mensagem" => "Motorista não encontrado."
+            ]);
+        }
+
+        $rotaTexto = limparTexto($driver["cluster_text"] ?? "");
+        $companheiros = $rotaTexto !== "" ? buscarCompanheirosDaRota($pdo, $rotaTexto) : [];
+        $conflito = $rotaTexto !== "" ? buscarConflitoRota($pdo, $mesa, $rotaTexto) : null;
+        $mesasMesmaRota = $rotaTexto !== "" ? buscarMesasMesmaRota($pdo, $rotaTexto) : [];
+
+        $routeTotal = count($companheiros);
+        $routeRestantes = 0;
+
+        foreach ($companheiros as $companheiro) {
+            if (mb_strtolower((string)($companheiro["status"] ?? ""), "UTF-8") !== "finalizado") {
+                $routeRestantes++;
+            }
+        }
+
+        $driver["route_total"] = $routeTotal;
+        $driver["route_restantes"] = $routeRestantes;
+
+        responder([
+            "ok" => true,
+            "found" => true,
+            "driver" => $driver,
+            "companheiros" => $companheiros,
+            "mesa" => buscarMesaPorNumero($pdo, $mesa),
+            "conflito_rota" => $conflito,
+            "mesas_mesma_rota" => $mesasMesmaRota,
+            "server_time" => date("c")
         ]);
     }
 
