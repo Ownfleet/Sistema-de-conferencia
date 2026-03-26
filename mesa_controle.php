@@ -145,12 +145,29 @@ function carregarDriverPorId(PDO $pdo, string $driverId): ?array {
 
 function carregarCompanheirosDaRota(PDO $pdo, string $clusterText): array {
     $stmt = $pdo->prepare("
-        SELECT d.id, d.driver_id, d.driver_name, d.cluster_text, d.packages_total,
-               d.vehicle_type, d.status,
-               mc.mesa AS mesa_atual, mc.status_mesa
+        SELECT
+            d.id,
+            d.driver_id,
+            d.driver_name,
+            d.cluster_text,
+            d.packages_total,
+            d.vehicle_type,
+            d.status,
+            mc.mesa AS mesa_atual,
+            mc.status_mesa
         FROM drivers d
-        LEFT JOIN mesas_controle mc ON mc.driver_id = d.driver_id
-        WHERE d.active = true AND d.cluster_text = :cluster_text
+        LEFT JOIN LATERAL (
+            SELECT
+                m.mesa,
+                m.status_mesa,
+                m.updated_at
+            FROM mesas_controle m
+            WHERE m.driver_id = d.driver_id
+            ORDER BY m.updated_at DESC, m.mesa ASC
+            LIMIT 1
+        ) mc ON true
+        WHERE d.active = true
+          AND d.cluster_text = :cluster_text
         ORDER BY d.driver_name ASC
     ");
     $stmt->execute([":cluster_text" => $clusterText]);
@@ -180,7 +197,15 @@ try {
             ], 200);
         }
 
-        upsertMesaControle($pdo, $mesa, $driverDbId !== "" ? $driverDbId : null, $driverId !== "" ? $driverId : null, $rotaTexto !== "" ? $rotaTexto : null, $mesaAtual["status_mesa"] ?? "pesquisado");
+        upsertMesaControle(
+            $pdo,
+            $mesa,
+            $driverDbId !== "" ? $driverDbId : null,
+            $driverId !== "" ? $driverId : null,
+            $rotaTexto !== "" ? $rotaTexto : null,
+            $mesaAtual["status_mesa"] ?? "pesquisado"
+        );
+
         $mesaAtual = buscarMesaPorNumero($pdo, $mesa);
 
         responder([
@@ -230,7 +255,15 @@ try {
             ], 200);
         }
 
-        upsertMesaControle($pdo, $mesa, $driverDbId !== "" ? $driverDbId : null, $driverId !== "" ? $driverId : null, $rotaTexto, "conferindo");
+        upsertMesaControle(
+            $pdo,
+            $mesa,
+            $driverDbId !== "" ? $driverDbId : null,
+            $driverId !== "" ? $driverId : null,
+            $rotaTexto,
+            "conferindo"
+        );
+
         $mesaAtual = buscarMesaPorNumero($pdo, $mesa);
 
         responder([
