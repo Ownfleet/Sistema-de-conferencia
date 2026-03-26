@@ -6,20 +6,15 @@ $quantidadeMesas = 24;
 function parseMotoFormulaPhp(?string $formula): array {
     $formula = trim((string)$formula);
     $resultado = [];
-
-    if ($formula === "") {
-        return $resultado;
-    }
+    if ($formula === "") return $resultado;
 
     preg_match_all('/([A-Z]-\d+)\((\d+)\)/i', $formula, $matches, PREG_SET_ORDER);
-
     foreach ($matches as $m) {
         $resultado[] = [
             "cluster_code" => trim((string)$m[1]),
             "packages" => (int)$m[2]
         ];
     }
-
     return $resultado;
 }
 
@@ -44,30 +39,27 @@ $stmt = $pdo->query("
 $rows = $stmt->fetchAll();
 
 $driversMap = [];
-
 foreach ($rows as $r) {
     $driverDbId = $r["id"];
 
     if (!isset($driversMap[$driverDbId])) {
-        $motoItems = parseMotoFormulaPhp($r["moto_formula"] ?? "");
-
         $driversMap[$driverDbId] = [
-            "id" => $r["id"],
-            "driver_id" => $r["driver_id"],
-            "driver_name" => $r["driver_name"],
-            "cluster_text" => $r["cluster_text"],
+            "id" => (int)$r["id"],
+            "driver_id" => (string)$r["driver_id"],
+            "driver_name" => (string)$r["driver_name"],
+            "cluster_text" => (string)$r["cluster_text"],
             "packages_total" => (int)$r["packages_total"],
-            "vehicle_type" => $r["vehicle_type"],
-            "status" => $r["status"],
-            "moto_formula" => $r["moto_formula"],
-            "moto_items" => $motoItems,
+            "vehicle_type" => (string)$r["vehicle_type"],
+            "status" => (string)$r["status"],
+            "moto_formula" => (string)($r["moto_formula"] ?? ""),
+            "moto_items" => parseMotoFormulaPhp($r["moto_formula"] ?? ""),
             "clusters" => []
         ];
     }
 
     if (!empty($r["cluster_code"])) {
         $driversMap[$driverDbId]["clusters"][] = [
-            "cluster_code" => $r["cluster_code"],
+            "cluster_code" => (string)$r["cluster_code"],
             "packages" => (int)$r["cluster_packages"],
             "sort_order" => (int)$r["sort_order"]
         ];
@@ -153,6 +145,8 @@ body.modal-open{overflow:hidden}
 .btn-acao-conferindo{background:linear-gradient(135deg,#f59e0b 0%, #fbbf24 100%)}
 .btn-acao-finalizado{background:linear-gradient(135deg,#64748b 0%, #475569 100%)}
 .btn-acao-mesa:disabled{opacity:.7;cursor:not-allowed}
+.btn-piscar{animation:pulseButton 1s infinite}
+@keyframes pulseButton{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(245,158,11,.45)}70%{transform:scale(1.02);box-shadow:0 0 0 12px rgba(245,158,11,0)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(245,158,11,0)}}
 .status-finalizado-msg{padding:16px;border-radius:16px;background:#e5e7eb;color:#111827;font-weight:900;font-size:18px}
 .msg-vazia{color:#6b7280;font-size:18px;text-align:center;padding:26px 10px;min-height:140px;display:flex;align-items:center;justify-content:center;line-height:1.4}
 .bloco-lateral{background:linear-gradient(180deg,#f8fafc 0%,#f6f9fc 100%);border:1px solid var(--line);border-radius:26px;padding:18px;display:flex;flex-direction:column;min-height:0;overflow:auto}
@@ -185,6 +179,14 @@ body.modal-open{overflow:hidden}
 .loading-box{background:#fff;border:1px solid #eee;border-radius:20px;padding:24px 28px;box-shadow:0 15px 40px rgba(0,0,0,0.12);display:flex;flex-direction:column;align-items:center;gap:14px;min-width:220px}
 .spinner{width:46px;height:46px;border:4px solid #f3f4f6;border-top-color:var(--shopee);border-radius:50%;animation:spin 1s linear infinite}
 .loading-text{font-size:16px;font-weight:900;color:#111827}
+.modal-bloqueio{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:10001;padding:18px}
+.modal-bloqueio.ativo{display:flex}
+.modal-bloqueio-card{width:100%;max-width:460px;background:#fff;border-radius:24px;padding:24px;box-shadow:0 24px 60px rgba(15,23,42,.25);text-align:center}
+.modal-bloqueio-card h3{margin:0 0 10px 0;font-size:24px;color:#0f172a}
+.modal-bloqueio-card p{margin:0 0 18px 0;color:#475467;line-height:1.5;font-size:15px}
+.modal-bloqueio-acoes{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.modal-bloqueio-btn{border:none;border-radius:14px;padding:12px 18px;font-weight:800;color:#fff;cursor:pointer}
+.modal-bloqueio-btn.ok{background:linear-gradient(90deg,var(--shopee),var(--shopee-2))}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (max-width: 1220px){.modal-card{height:calc(100vh - 20px);padding:14px}.modal-conteudo{grid-template-columns:1fr}.coluna-principal,.coluna-lateral{overflow:auto}.busca-modal{grid-template-columns:1fr 1fr}.busca-modal input{grid-column:1 / -1}}
 @media (max-width: 760px){.topo{padding:18px 16px}.topo h2{font-size:24px}.container{padding:14px}.modal{padding:8px}.modal-card{height:calc(100vh - 16px);border-radius:22px;padding:12px}.modal-topo h3{font-size:22px}.busca-modal{grid-template-columns:1fr}.resultado-mesa,.bloco-lateral{padding:14px}.info-basica{grid-template-columns:1fr}.acoes-mesa{grid-template-columns:1fr}.item-companheiro{flex-direction:column;align-items:flex-start}.mesas-grid{grid-template-columns:repeat(auto-fit, minmax(108px, 108px));gap:12px}.btn-mesa{width:108px;height:108px;font-size:18px;border-radius:20px}}
@@ -249,6 +251,16 @@ body.modal-open{overflow:hidden}
     </div>
 </div>
 
+<div class="modal-bloqueio" id="modalBloqueio">
+    <div class="modal-bloqueio-card">
+        <h3>Atenção</h3>
+        <p id="modalBloqueioTexto">Finalize a conferência atual antes de trocar de motorista.</p>
+        <div class="modal-bloqueio-acoes">
+            <button type="button" class="modal-bloqueio-btn ok" id="fecharModalBloqueio">Entendi</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const DRIVERS = <?= json_encode($driversByDriverId, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 
@@ -265,26 +277,32 @@ const loadingOverlay = document.getElementById("loadingOverlay");
 const cronometroMesa = document.getElementById("cronometroMesa");
 const cronometroTempo = document.getElementById("cronometroTempo");
 const cronometroRota = document.getElementById("cronometroRota");
+const modalBloqueio = document.getElementById("modalBloqueio");
+const modalBloqueioTexto = document.getElementById("modalBloqueioTexto");
+const fecharModalBloqueio = document.getElementById("fecharModalBloqueio");
 
 let mesaAtual = null;
 let cronometroInterval = null;
-let cronometroInicio = null;
-let cronometroRotaAtual = "";
-let pollingInterval = null;
 let currentDriverId = "";
-let currentDriverState = null;
+let currentPayload = null;
+let pollingInterval = null;
 let lastRenderSignature = "";
 
 function esconderLoading(){ loadingOverlay.classList.add("hidden"); }
-window.addEventListener("load", function(){ setTimeout(() => esconderLoading(), 250); });
+window.addEventListener("load", () => setTimeout(() => esconderLoading(), 250));
+
+function abrirModalBloqueio(texto){
+    modalBloqueioTexto.textContent = texto || "Finalize a conferência atual antes de trocar de motorista.";
+    modalBloqueio.classList.add("ativo");
+}
+function fecharBloqueio(){ modalBloqueio.classList.remove("ativo"); }
+fecharModalBloqueio.addEventListener("click", fecharBloqueio);
 
 function chaveMesa(mesa){ return "mesa_conferente_" + mesa; }
-
 function atualizarBotoesMesas(){
     botoesMesa.forEach(btn => {
         const mesa = btn.dataset.mesa;
-        const salvo = localStorage.getItem(chaveMesa(mesa));
-        btn.classList.toggle("com-busca", !!salvo);
+        btn.classList.toggle("com-busca", !!localStorage.getItem(chaveMesa(mesa)));
     });
 }
 
@@ -293,17 +311,10 @@ function abrirMesa(mesa){
     tituloMesa.textContent = "Mesa " + mesa;
     modal.classList.add("ativo");
     document.body.classList.add("modal-open");
-
     const salvo = localStorage.getItem(chaveMesa(mesa));
     inputMesa.value = salvo || "";
-
-    if (salvo) {
-        pesquisarMotoristaAtual(salvo, false);
-    } else {
-        limparPainelMesa();
-        carregarCronometroMesa();
-    }
-
+    if (salvo) pesquisarMotoristaAtual(salvo, false);
+    else { limparPainelMesa(); carregarCronometroMesa(); }
     setTimeout(() => inputMesa.focus(), 50);
 }
 
@@ -314,7 +325,7 @@ function fecharMesa(){
     document.body.classList.remove("modal-open");
     mesaAtual = null;
     currentDriverId = "";
-    currentDriverState = null;
+    currentPayload = null;
     lastRenderSignature = "";
 }
 
@@ -346,8 +357,6 @@ function formatarDuracao(segundos){
 function pararCronometroVisual(){
     if (cronometroInterval) clearInterval(cronometroInterval);
     cronometroInterval = null;
-    cronometroInicio = null;
-    cronometroRotaAtual = "";
     cronometroMesa.style.display = "none";
     cronometroTempo.textContent = "00:00:00";
     cronometroRota.textContent = "";
@@ -356,18 +365,13 @@ function pararCronometroVisual(){
 function iniciarCronometroVisual(dataInicio, rotaTexto){
     if (!dataInicio) { pararCronometroVisual(); return; }
     if (cronometroInterval) clearInterval(cronometroInterval);
-
-    cronometroInicio = new Date(dataInicio);
-    cronometroRotaAtual = rotaTexto || "";
+    const inicio = new Date(dataInicio);
     cronometroMesa.style.display = "block";
-    cronometroRota.textContent = cronometroRotaAtual ? `Rota em conferência: ${cronometroRotaAtual}` : "";
-
+    cronometroRota.textContent = rotaTexto ? `Rota em conferência: ${rotaTexto}` : "";
     const tick = () => {
-        const agora = new Date();
-        const total = Math.floor((agora.getTime() - cronometroInicio.getTime()) / 1000);
+        const total = Math.floor((Date.now() - inicio.getTime()) / 1000);
         cronometroTempo.textContent = formatarDuracao(total);
     };
-
     tick();
     cronometroInterval = setInterval(tick, 1000);
 }
@@ -376,8 +380,7 @@ async function carregarCronometroMesa(){
     if (!mesaAtual) return;
     try {
         const resposta = await fetch(`tempo_mesa.php?action=status&mesa=${encodeURIComponent(mesaAtual)}`);
-        const texto = await resposta.text();
-        const data = JSON.parse(texto);
+        const data = JSON.parse(await resposta.text());
         if (data.ok && data.ativo && data.registro) iniciarCronometroVisual(data.registro.started_at, data.registro.rota_texto);
         else pararCronometroVisual();
     } catch (e) {
@@ -414,7 +417,6 @@ async function apiMesa(action, payload = {}, method = "POST"){
         Object.keys(payload).forEach(key => form.append(key, payload[key]));
         res = await fetch("mesa_controle.php", { method: "POST", body: form, cache: "no-store" });
     }
-
     const texto = await res.text();
     let json;
     try { json = JSON.parse(texto); }
@@ -435,7 +437,6 @@ function montarCompanheirosDaRotaHtml(motorista, companheiros){
     }
 
     let html = "";
-
     companheiros.forEach(item => {
         const ehMotoristaDaMesa = String(item.driver_id) === String(motorista.driver_id);
         const finalizado = (item.status || "").toLowerCase() === "finalizado";
@@ -474,8 +475,15 @@ function montarCompanheirosDaRotaHtml(motorista, companheiros){
             </div>
         `;
     });
-
     return html;
+}
+
+function mesaEstaTravadaParaOutroId(novoId){
+    const mesa = currentPayload?.mesa;
+    if (!mesa) return false;
+    return mesa.status_mesa === "conferindo"
+        && mesa.driver_id
+        && String(mesa.driver_id) !== String(novoId);
 }
 
 function montarHtmlResultado(payload){
@@ -484,25 +492,20 @@ function montarHtmlResultado(payload){
     const motoItems = obterMotoItemsIndividuais(motorista);
     const companheiros = Array.isArray(payload.companheiros) ? payload.companheiros : [];
     const conflito = payload.conflito_rota || null;
+    const mesaInfo = payload.mesa || null;
+    const mesaConferindoEsteId = mesaInfo && mesaInfo.status_mesa === "conferindo" && String(mesaInfo.driver_id || "") === String(motorista.driver_id || "");
+    const precisaConferir = (motorista.status || "").toLowerCase() !== "finalizado" && !mesaConferindoEsteId;
 
     let htmlClusters = "";
     if (ehMoto && motoItems.length > 0) {
-        htmlClusters += '<div class="moto-box">';
-        htmlClusters += '<div class="moto-titulo">O QUE PASSAR PARA ESTE MOTORISTA</div>';
-        htmlClusters += '<div class="moto-lista">';
+        htmlClusters += '<div class="moto-box"><div class="moto-titulo">O QUE PASSAR PARA ESTE MOTORISTA</div><div class="moto-lista">';
         motoItems.forEach(c => {
             const packages = parseInt(c.packages || 0, 10);
             if (packages > 0) {
-                htmlClusters += `
-                    <div class="moto-item">
-                        PASSE <span class="numero">${packages}</span> DA <span class="cluster">${escaparHtml(c.cluster_code)}</span>
-                    </div>
-                `;
+                htmlClusters += `<div class="moto-item">PASSE <span class="numero">${packages}</span> DA <span class="cluster">${escaparHtml(c.cluster_code)}</span></div>`;
             }
         });
-        htmlClusters += '</div>';
-        htmlClusters += `<div class="moto-total">TOTAL ${escaparHtml(motorista.packages_total)} PACOTES</div>`;
-        htmlClusters += '</div>';
+        htmlClusters += `</div><div class="moto-total">TOTAL ${escaparHtml(motorista.packages_total)} PACOTES</div></div>`;
     }
 
     const blocoRotaNormal = !ehMoto ? `
@@ -512,28 +515,21 @@ function montarHtmlResultado(payload){
         </div>
     ` : "";
 
-    const totalPacotes = `
-        <div class="pacote-destaque">
-            TOTAL A PASSAR: ${escaparHtml(motorista.packages_total)} PACOTES
-        </div>
-    `;
+    const totalPacotes = `<div class="pacote-destaque">TOTAL A PASSAR: ${escaparHtml(motorista.packages_total)} PACOTES</div>`;
 
-    const htmlAcoes = (motorista.status || "").toLowerCase() !== "finalizado"
-        ? `
+    let htmlAcoes = "";
+    if ((motorista.status || "").toLowerCase() !== "finalizado") {
+        htmlAcoes = `
             <div class="acoes-mesa">
-                <button type="button" class="btn-acao-mesa btn-acao-conferindo" onclick="alterarStatusMesa('${escaparHtml(motorista.driver_id)}','conferindo')">Conferindo</button>
-                <button type="button" class="btn-acao-mesa btn-acao-finalizado" onclick="alterarStatusMesa('${escaparHtml(motorista.driver_id)}','finalizado')">Finalizado</button>
-            </div>
-        `
-        : `
-            <div class="status-finalizado-msg">
-                Esta rota já foi finalizada. Para reabrir, altere pelo painel admin.
+                <button type="button" class="btn-acao-mesa btn-acao-conferindo ${precisaConferir ? "btn-piscar" : ""}" ${mesaConferindoEsteId ? "disabled" : ""} onclick="alterarStatusMesa('${escaparHtml(motorista.driver_id)}','conferindo')">Conferindo</button>
+                <button type="button" class="btn-acao-mesa btn-acao-finalizado" ${!mesaConferindoEsteId ? "disabled" : ""} onclick="alterarStatusMesa('${escaparHtml(motorista.driver_id)}','finalizado')">Finalizado</button>
             </div>
         `;
+    } else {
+        htmlAcoes = `<div class="status-finalizado-msg">Esta rota já foi finalizada. Para reabrir, altere pelo painel admin.</div>`;
+    }
 
-    const htmlConflito = conflito
-        ? `<div class="alerta-conflito-mesa">Essa rota está em conferência na mesa ${escaparHtml(conflito.mesa)}${conflito.driver_id ? " pelo ID " + escaparHtml(conflito.driver_id) : ""}.</div>`
-        : "";
+    const htmlConflito = conflito ? `<div class="alerta-conflito-mesa">Essa rota está em conferência na mesa ${escaparHtml(conflito.mesa)}${conflito.driver_id ? " pelo ID " + escaparHtml(conflito.driver_id) : ""}.</div>` : "";
 
     return {
         esquerda: `
@@ -548,7 +544,7 @@ function montarHtmlResultado(payload){
                     <div class="linha"><strong>Rota:</strong> ${escaparHtml(motorista.cluster_text)}</div>
                     <div class="linha"><strong>Veículo:</strong> ${escaparHtml(motorista.vehicle_type)}</div>
                     <div class="linha"><strong>Status:</strong> ${escaparHtml(motorista.status)}</div>
-                    <div class="linha"><strong>Companheiros na rota:</strong> ${escaparHtml(motorista.route_total || 1)}</div>
+                    <div class="linha"><strong>Companheiros na rota:</strong> ${escaparHtml(companheiros.length || 1)}</div>
                 </div>
 
                 ${totalPacotes}
@@ -564,29 +560,38 @@ function montarHtmlResultado(payload){
 
 function aplicarPayloadLive(payload){
     if (!payload || !payload.driver) return;
-    currentDriverState = payload.driver;
+    currentPayload = payload;
     currentDriverId = payload.driver.driver_id;
 
-    const assinatura = JSON.stringify({ driver: payload.driver, companheiros: payload.companheiros, conflito: payload.conflito_rota });
+    const assinatura = JSON.stringify({
+        mesa: payload.mesa,
+        driver: payload.driver,
+        companheiros: payload.companheiros,
+        conflito: payload.conflito_rota
+    });
 
     if (assinatura !== lastRenderSignature) {
         const html = montarHtmlResultado(payload);
         resultadoMesa.innerHTML = html.esquerda;
         companheirosMesa.innerHTML = html.direita;
-        if ((payload.driver.status || "").toLowerCase() === "conferindo") resultadoMesa.classList.add("destacado-conferindo");
-        else resultadoMesa.classList.remove("destacado-conferindo");
+
+        if (payload.mesa && payload.mesa.status_mesa === "conferindo" && String(payload.mesa.driver_id || "") === String(payload.driver.driver_id || "")) {
+            resultadoMesa.classList.add("destacado-conferindo");
+        } else {
+            resultadoMesa.classList.remove("destacado-conferindo");
+        }
+
         lastRenderSignature = assinatura;
     }
 }
 
 async function carregarStatusLive(driverId, silencioso = false){
     if (!mesaAtual || !driverId) return;
-
     try {
         const payload = await apiMesa("status_live", { mesa: mesaAtual, driver_id: driverId }, "GET");
 
         if (!payload.ok || !payload.found) {
-            currentDriverState = null;
+            currentPayload = null;
             currentDriverId = driverId;
             if (!silencioso) {
                 resultadoMesa.innerHTML = '<div class="msg-vazia">Nenhum motorista encontrado para o ID informado.</div>';
@@ -599,12 +604,16 @@ async function carregarStatusLive(driverId, silencioso = false){
         await carregarCronometroMesa();
 
         if (!silencioso) {
-            await apiMesa("save_search", {
+            const saveResult = await apiMesa("save_search", {
                 mesa: mesaAtual,
                 driver_db_id: payload.driver.id,
                 driver_id: payload.driver.driver_id,
                 rota_texto: payload.driver.cluster_text
             });
+
+            if (!saveResult.ok || saveResult.bloqueado) {
+                abrirModalBloqueio(saveResult.mensagem || "Finalize a conferência atual antes de trocar de motorista.");
+            }
         }
     } catch (e) {
         console.error("Erro ao carregar status live:", e.message);
@@ -625,10 +634,16 @@ async function pesquisarMotoristaAtual(valor, iniciarPolling = true){
 
     if (!id) {
         currentDriverId = "";
-        currentDriverState = null;
+        currentPayload = null;
         lastRenderSignature = "";
         pararPollingMesa();
         limparPainelMesa();
+        return;
+    }
+
+    if (mesaEstaTravadaParaOutroId(id)) {
+        abrirModalBloqueio(`Você precisa finalizar o ID ${currentPayload.mesa.driver_id} antes de pesquisar outro motorista nesta mesa.`);
+        inputMesa.value = currentDriverId || currentPayload.mesa.driver_id || "";
         return;
     }
 
@@ -638,8 +653,17 @@ async function pesquisarMotoristaAtual(valor, iniciarPolling = true){
 }
 
 async function alterarStatusMesa(driverId, novoStatus){
-    const motorista = currentDriverState && String(currentDriverState.driver_id) === String(driverId) ? currentDriverState : null;
+    const motorista = currentPayload && String(currentPayload.driver.driver_id) === String(driverId) ? currentPayload.driver : null;
     if (!motorista) { alert("Motorista não encontrado."); return; }
+
+    const mesaInfo = currentPayload?.mesa || null;
+    const mesaConferindoEsteId = mesaInfo && mesaInfo.status_mesa === "conferindo" && String(mesaInfo.driver_id || "") === String(motorista.driver_id || "");
+
+    if (novoStatus === "conferindo" && mesaConferindoEsteId) return;
+    if (novoStatus === "finalizado" && !mesaConferindoEsteId) {
+        abrirModalBloqueio("Clique em Conferindo antes de finalizar esta rota.");
+        return;
+    }
 
     const botoes = resultadoMesa.querySelectorAll(".btn-acao-mesa");
     botoes.forEach(btn => btn.disabled = true);
@@ -653,9 +677,8 @@ async function alterarStatusMesa(driverId, novoStatus){
                 rota_texto: motorista.cluster_text
             });
 
-            if (!conflito.ok) {
+            if (!conflito.ok || conflito.conflito || conflito.bloqueado) {
                 await carregarStatusLiveAtual(false);
-                botoes.forEach(btn => btn.disabled = false);
                 return;
             }
 
@@ -669,19 +692,10 @@ async function alterarStatusMesa(driverId, novoStatus){
             formTempo.append("vehicle_type", motorista.vehicle_type);
 
             const respTempo = await fetch("tempo_mesa.php", { method: "POST", body: formTempo });
-            const txtTempo = await respTempo.text();
-            const jsonTempo = JSON.parse(txtTempo);
-
-            if (!jsonTempo.ok) {
-                alert(jsonTempo.erro || "Erro ao iniciar cronômetro.");
-                botoes.forEach(btn => btn.disabled = false);
-                return;
-            }
-
-            iniciarCronometroVisual(jsonTempo.started_at, motorista.cluster_text);
+            const jsonTempo = JSON.parse(await respTempo.text());
+            if (jsonTempo.ok) iniciarCronometroVisual(jsonTempo.started_at, motorista.cluster_text);
         } catch (e) {
             alert("Erro ao verificar conflito da mesa: " + e.message);
-            botoes.forEach(btn => btn.disabled = false);
             return;
         }
     }
@@ -690,19 +704,12 @@ async function alterarStatusMesa(driverId, novoStatus){
         const form = new FormData();
         form.append("id", motorista.id);
         form.append("status", novoStatus);
-
         const resposta = await fetch("atualizar_status.php", { method: "POST", body: form });
         const texto = await resposta.text();
-
         let json;
         try { json = JSON.parse(texto); }
         catch (e) { throw new Error("Resposta inválida do atualizar_status.php: " + texto); }
-
-        if (!json.ok) {
-            alert(json.erro || "Erro ao atualizar status.");
-            botoes.forEach(btn => btn.disabled = false);
-            return;
-        }
+        if (!json.ok) throw new Error(json.erro || "Erro ao atualizar status.");
 
         if (novoStatus === "finalizado") {
             try {
@@ -710,17 +717,14 @@ async function alterarStatusMesa(driverId, novoStatus){
                 formTempoFim.append("action", "finish");
                 formTempoFim.append("mesa", mesaAtual);
                 formTempoFim.append("rota_texto", motorista.cluster_text);
-
-                const respFim = await fetch("tempo_mesa.php", { method: "POST", body: formTempoFim });
-                const txtFim = await respFim.text();
-                const jsonFim = JSON.parse(txtFim);
-                if (jsonFim.ok) pararCronometroVisual();
+                await fetch("tempo_mesa.php", { method: "POST", body: formTempoFim });
             } catch (e) {
                 console.error("Erro ao finalizar cronômetro:", e);
             }
 
             try {
                 await apiMesa("clear", { mesa: mesaAtual });
+                pararCronometroVisual();
             } catch (e) {
                 console.error("Erro ao limpar mesa após finalizar:", e.message);
             }
@@ -730,7 +734,6 @@ async function alterarStatusMesa(driverId, novoStatus){
         await carregarStatusLiveAtual(false);
     } catch (e) {
         alert("Erro ao atualizar status: " + e.message);
-        botoes.forEach(btn => btn.disabled = false);
     }
 }
 
@@ -744,10 +747,16 @@ btnPesquisarMesa.addEventListener("click", async function(){
 });
 
 btnLimparMesa.addEventListener("click", async function(){
+    const mesaInfo = currentPayload?.mesa || null;
+    if (mesaInfo && mesaInfo.status_mesa === "conferindo") {
+        abrirModalBloqueio(`A mesa ${mesaAtual} está com o ID ${mesaInfo.driver_id} em conferência. Finalize antes de limpar.`);
+        return;
+    }
+
     inputMesa.value = "";
     salvarMesa("");
     currentDriverId = "";
-    currentDriverState = null;
+    currentPayload = null;
     lastRenderSignature = "";
     pararPollingMesa();
 
